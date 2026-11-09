@@ -1,26 +1,18 @@
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
+import { getSupabaseUrl, getSupabasePublishableKey } from '@/utils/supabase/config';
 
 /**
  * Supabase Server Client for MarrowNode
  * Uses Next.js cookies to securely read and set session cookies.
+ * Enforces canonical MarrowNode Supabase project targeting.
  */
 export function createClient(cookieStore?: ReturnType<typeof cookies>) {
   const store = cookieStore || cookies();
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseKey =
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const supabaseUrl = getSupabaseUrl();
+  const supabaseKey = getSupabasePublishableKey();
 
-  if (!supabaseUrl || !supabaseKey) {
-    if (process.env.NODE_ENV === 'development') {
-      console.warn(
-        '[MarrowNode] Missing Supabase environment variables for server client.'
-      );
-    }
-  }
-
-  return createServerClient(supabaseUrl || '', supabaseKey || '', {
+  return createServerClient(supabaseUrl, supabaseKey, {
     cookies: {
       getAll() {
         return store.getAll();
@@ -31,8 +23,7 @@ export function createClient(cookieStore?: ReturnType<typeof cookies>) {
             store.set(name, value, options)
           );
         } catch {
-          // The `setAll` method was called from a Server Component.
-          // This can be ignored if middleware is refreshing user sessions.
+          // Ignored if middleware handles token refresh
         }
       },
     },
@@ -40,4 +31,3 @@ export function createClient(cookieStore?: ReturnType<typeof cookies>) {
 }
 
 export default createClient;
-

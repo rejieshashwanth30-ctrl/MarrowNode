@@ -1,5 +1,6 @@
 import { createServerClient } from '@supabase/ssr';
 import { type NextRequest, NextResponse } from 'next/server';
+import { getSupabaseUrl, getSupabasePublishableKey } from '@/utils/supabase/config';
 
 /**
  * Lightweight Supabase Session Refresh for Next.js Middleware
@@ -12,14 +13,8 @@ export async function updateSession(request: NextRequest) {
     },
   });
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseKey =
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-  if (!supabaseUrl || !supabaseKey) {
-    return { supabaseResponse, user: null };
-  }
+  const supabaseUrl = getSupabaseUrl();
+  const supabaseKey = getSupabasePublishableKey();
 
   const supabase = createServerClient(supabaseUrl, supabaseKey, {
     cookies: {
@@ -47,4 +42,3 @@ export async function updateSession(request: NextRequest) {
 
   return { supabaseResponse, user };
 }
-

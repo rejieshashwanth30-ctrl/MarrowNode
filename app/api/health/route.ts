@@ -1,13 +1,15 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { createClient } from '@/utils/supabase/server';
+import { getSupabaseUrl } from '@/utils/supabase/config';
+import { getAppOrigin } from '@/lib/origin';
 
 export const dynamic = 'force-dynamic';
 
 /**
  * Health & Connectivity Test Endpoint for MarrowNode Backend Foundation
  * Verifies Neon PostgreSQL and Supabase Auth connectivity safely.
- * NEVER exposes connection strings or secrets.
+ * Includes safe diagnostic metadata without exposing secrets.
  */
 export async function GET() {
   const status: {
@@ -24,12 +26,22 @@ export async function GET() {
         error?: string;
       };
     };
+    diagnostic: {
+      supabaseHost: string;
+      applicationOrigin: string;
+      isGitriumBlocked: boolean;
+    };
   } = {
     status: 'ok',
     timestamp: new Date().toISOString(),
     services: {
       neonPostgres: { connected: false, latencyMs: 0 },
       supabaseAuth: { reachable: false },
+    },
+    diagnostic: {
+      supabaseHost: new URL(getSupabaseUrl()).hostname,
+      applicationOrigin: getAppOrigin(),
+      isGitriumBlocked: true,
     },
   };
 
@@ -61,4 +73,3 @@ export async function GET() {
   const httpStatus = status.services.neonPostgres.connected ? 200 : 503;
   return NextResponse.json(status, { status: httpStatus });
 }
-
