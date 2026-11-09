@@ -2,6 +2,8 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { listUserProjects, createProject } from '@/lib/services/projects';
 
+export const dynamic = 'force-dynamic';
+
 /**
  * GET /api/projects
  * Returns all projects owned by the authenticated user from Neon PostgreSQL

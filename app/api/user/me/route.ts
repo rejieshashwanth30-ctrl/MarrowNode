@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser, getOrCreateCurrentProfile } from '@/lib/auth';
 
+export const dynamic = 'force-dynamic';
+
 /**
  * Get current authenticated user profile from Neon PostgreSQL
  */

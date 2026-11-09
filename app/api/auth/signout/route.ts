@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
 
+export const dynamic = 'force-dynamic';
+
 /**
  * Sign out handler to clear session cookies
  */

@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { createClient } from '@/utils/supabase/server';
 
+export const dynamic = 'force-dynamic';
+
 /**
  * Health & Connectivity Test Endpoint for MarrowNode Backend Foundation
  * Verifies Neon PostgreSQL and Supabase Auth connectivity safely.

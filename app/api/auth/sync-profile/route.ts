@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser, getOrCreateCurrentProfile } from '@/lib/auth';
 
+export const dynamic = 'force-dynamic';
+
 /**
  * Sync Supabase authenticated session with Neon MarrowNode Profile
  */

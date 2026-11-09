@@ -3,6 +3,8 @@ import { createClient } from '@/utils/supabase/server';
 import { getOrCreateCurrentProfile } from '@/lib/auth';
 import { saveGitHubConnection } from '@/lib/services/users';
 
+export const dynamic = 'force-dynamic';
+
 /**
  * Supabase Auth Callback Route Handler
  * Exchanges authorization code for session, creates/syncs MarrowNode Profile in Neon,

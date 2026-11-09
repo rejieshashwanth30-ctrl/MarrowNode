@@ -6,6 +6,8 @@ interface RouteContext {
   params: { id: string };
 }
 
+export const dynamic = 'force-dynamic';
+
 /**
  * GET /api/projects/[id]
  * Enforces strict user ownership

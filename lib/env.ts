@@ -27,14 +27,10 @@ export function validateEnv(): ValidatedEnv {
   if (!supabaseKey) missing.push('NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY');
 
   if (missing.length > 0) {
-    const errorMsg = `[MarrowNode Configuration Error] Missing required environment variables: ${missing.join(
+    const errorMsg = `[MarrowNode Configuration] Missing environment variables: ${missing.join(
       ', '
-    )}. Please check your .env.local file. (Never hardcode secrets in source code)`;
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error(errorMsg);
-    } else {
-      console.warn(errorMsg);
-    }
+    )}. Please ensure these are set in Vercel Project Settings → Environment Variables.`;
+    console.warn(errorMsg);
   }
 
   return {
