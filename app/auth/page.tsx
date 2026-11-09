@@ -53,6 +53,7 @@ function AuthContent() {
         provider: 'github',
         options: {
           redirectTo: `${origin}/auth/callback?next=/dashboard`,
+          scopes: 'read:user repo',
         },
       });
 

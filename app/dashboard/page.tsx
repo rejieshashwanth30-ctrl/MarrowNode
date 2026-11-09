@@ -8,6 +8,7 @@ import { Topbar } from '@/components/Topbar';
 import { MobileNavigation } from '@/components/MobileNavigation';
 import { CommandPalette } from '@/components/ui/CommandPalette';
 import { ProjectHeader } from '@/components/ProjectHeader';
+import { RepositorySelector } from '@/components/RepositorySelector';
 import { ContextCoverageWidget } from '@/components/ContextCoverageWidget';
 import { ProjectIntelligencePanel } from '@/components/ProjectIntelligencePanel';
 import { ArchitectureGraph } from '@/components/ArchitectureGraph';
@@ -27,6 +28,10 @@ import {
   ArrowRight,
   FolderGit2,
   RefreshCw,
+  Plus,
+  X,
+  AlertCircle,
+  Play,
 } from 'lucide-react';
 
 export default function DashboardPage() {
@@ -39,6 +44,9 @@ export default function DashboardPage() {
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [showRepoModal, setShowRepoModal] = useState(false);
 
   const fetchDashboardData = async () => {
     try {
@@ -80,6 +88,41 @@ export default function DashboardPage() {
     setIsRefreshing(true);
     await fetchDashboardData();
     setIsRefreshing(false);
+  };
+
+  const handleStartAnalysis = async (targetProjectId?: string) => {
+    const id = targetProjectId || selectedProjectId;
+    if (!id) return;
+
+    setIsAnalyzing(true);
+    setAnalysisError(null);
+
+    try {
+      const res = await fetch(`/api/projects/${id}/analyze`, {
+        method: 'POST',
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        setAnalysisError(data.error || 'Repository analysis failed');
+      } else {
+        await fetchDashboardData();
+      }
+    } catch (err: any) {
+      setAnalysisError(err?.message || 'Failed to trigger repository analysis');
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  const handleRepoConnected = async (newProject: any) => {
+    setShowRepoModal(false);
+    await fetchDashboardData();
+    if (newProject?.id) {
+      setSelectedProjectId(newProject.id);
+      // Automatically trigger deterministic analysis
+      handleStartAnalysis(newProject.id);
+    }
   };
 
   const handleSelectCommandAction = (type: string, target: string) => {
@@ -130,34 +173,37 @@ export default function DashboardPage() {
             project={selectedProject}
             onRefresh={handleRefresh}
             isRefreshing={isRefreshing}
+            onAnalyze={() => handleStartAnalysis()}
+            isAnalyzing={isAnalyzing}
+            onConnectRepo={() => setShowRepoModal(true)}
           />
+
+          {/* Analysis error alert */}
+          {analysisError && (
+            <div className="p-3.5 mx-3.5 sm:mx-6 mt-3 rounded bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 text-xs flex items-center justify-between font-sans">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{analysisError}</span>
+              </div>
+              <button
+                onClick={() => setAnalysisError(null)}
+                className="text-text-muted hover:text-text-primary dark:hover:text-white"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
 
           {/* Main View Surface */}
           <div className="p-3.5 sm:p-6 max-w-7xl mx-auto space-y-6 font-sans">
             {/* If no project is connected yet and on overview */}
             {!selectedProject && activeView === 'overview' ? (
               <div className="space-y-6 animate-in fade-in-50 duration-150">
-                {/* Clean No-Projects Empty State Card */}
-                <Card className="p-8 sm:p-12 text-center space-y-4 bg-surface dark:bg-[#151C17] border-border dark:border-border-dark font-sans">
-                  <div className="w-12 h-12 rounded-full bg-forest/10 border border-forest/20 flex items-center justify-center text-forest mx-auto dark:text-[#88B094]">
-                    <FolderGit2 className="w-6 h-6" />
-                  </div>
-                  <div className="space-y-1.5 max-w-md mx-auto">
-                    <h2 className="text-base sm:text-lg font-bold text-text-primary dark:text-white">
-                      No projects yet
-                    </h2>
-                    <p className="text-xs sm:text-sm text-text-muted leading-relaxed">
-                      Connect a GitHub repository to begin building your project context, architecture map, and development memory.
-                    </p>
-                  </div>
-                  <div className="pt-2">
-                    <Link href="/onboarding">
-                      <Button variant="primary" size="md" className="text-xs font-sans font-medium">
-                        Connect GitHub Repository
-                      </Button>
-                    </Link>
-                  </div>
-                </Card>
+                {/* Repository Browser / Connect Widget */}
+                <RepositorySelector
+                  onRepositoryConnected={handleRepoConnected}
+                  className="mb-6"
+                />
 
                 {/* Initial Blank Coverage Indicator */}
                 <ContextCoverageWidget coverage={null} />
@@ -244,16 +290,42 @@ export default function DashboardPage() {
                             architectureNodes: latestAnalysis.architectureNodes || 0,
                           },
                           breakdown: {
-                            codebaseUnderstanding: latestAnalysis.filesAnalyzed > 0 ? 80 : 0,
-                            architectureMapping: latestAnalysis.architectureNodes > 0 ? 70 : 0,
-                            gitHistory: latestAnalysis.commitsAnalyzed > 0 ? 85 : 0,
-                            dependencyMapping: latestAnalysis.dependenciesDetected > 0 ? 75 : 0,
+                            codebaseUnderstanding: (latestAnalysis.filesAnalyzed || 0) > 0 ? 80 : 0,
+                            architectureMapping: (latestAnalysis.architectureNodes || 0) > 0 ? 70 : 0,
+                            gitHistory: (latestAnalysis.commitsAnalyzed || 0) > 0 ? 85 : 0,
+                            dependencyMapping: (latestAnalysis.dependenciesDetected || 0) > 0 ? 75 : 0,
                             documentation: 50,
                           },
                         }
                       : null
                   }
                 />
+
+                {/* Unanalyzed banner if project has no analysis yet */}
+                {(!latestAnalysis || latestAnalysis.status === 'PENDING') && (
+                  <div className="p-4 rounded-lg bg-surface border border-forest/30 dark:bg-[#151C17] dark:border-forest/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3 font-sans">
+                    <div className="space-y-0.5">
+                      <div className="text-sm font-semibold text-text-primary dark:text-white flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-copper animate-pulse" />
+                        <span>Repository analysis not started</span>
+                      </div>
+                      <p className="text-xs text-text-muted">
+                        Execute deterministic AST & manifest analysis to populate file structure, dependencies, and commit intelligence.
+                      </p>
+                    </div>
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      onClick={() => handleStartAnalysis()}
+                      loading={isAnalyzing}
+                      disabled={isAnalyzing}
+                      className="text-xs font-sans font-medium shrink-0"
+                    >
+                      <Play className="w-3.5 h-3.5 mr-1.5 fill-current" />
+                      Run Analysis Now
+                    </Button>
+                  </div>
+                )}
 
                 {/* 2. Key Engineering Telemetry Cards (Real Data from Neon) */}
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4 font-sans">
@@ -340,7 +412,9 @@ export default function DashboardPage() {
 
                       <CardContent className="p-6 text-center space-y-2">
                         <div className="text-xs text-text-muted">
-                          Architecture map unavailable. Connect and analyze a repository to generate the architecture map.
+                          {latestAnalysis?.status === 'COMPLETED'
+                            ? `Architecture topology mapped across ${latestAnalysis.architectureNodes || 0} module components.`
+                            : 'Architecture map unavailable. Run repository analysis to generate the topology map.'}
                         </div>
                       </CardContent>
                     </Card>
@@ -369,7 +443,9 @@ export default function DashboardPage() {
 
                       <CardContent className="p-6 text-center space-y-2">
                         <div className="text-xs text-text-muted">
-                          No development history available yet.
+                          {latestAnalysis?.status === 'COMPLETED'
+                            ? `Indexed ${latestAnalysis.commitsAnalyzed || 0} commits along ${selectedProject.defaultBranch || 'main'}.`
+                            : 'No development history available yet.'}
                         </div>
                       </CardContent>
                     </Card>
@@ -431,6 +507,18 @@ export default function DashboardPage() {
           </div>
         </main>
       </div>
+
+      {/* Connect Repository Modal */}
+      {showRepoModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-charcoal/60 backdrop-blur-sm animate-in fade-in-50">
+          <div className="max-w-2xl w-full max-h-[90vh] overflow-y-auto rounded-lg shadow-2xl">
+            <RepositorySelector
+              onRepositoryConnected={handleRepoConnected}
+              onCancel={() => setShowRepoModal(false)}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Mobile Navigation Drawer & Bottom Bar */}
       <MobileNavigation

@@ -49,6 +49,7 @@ model GitHubConnection {
   githubAccountId  String
   githubUsername   String
   avatarUrl        String?
+  accessToken      String?
   connectionStatus String   @default("connected")
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt

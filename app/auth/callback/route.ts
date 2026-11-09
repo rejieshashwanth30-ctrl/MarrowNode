@@ -88,10 +88,13 @@ export async function GET(request: NextRequest) {
               githubAccountId: String(githubAccountId),
               githubUsername,
               avatarUrl: data.user.user_metadata?.avatar_url || null,
+              accessToken: data.session?.provider_token || null,
             });
             console.log(
               '[MarrowNode Auth Callback] GitHub connection recorded for user:',
-              data.user.id
+              data.user.id,
+              '| Provider token captured:',
+              Boolean(data.session?.provider_token)
             );
           }
         } catch (syncErr: any) {

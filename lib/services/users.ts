@@ -55,6 +55,7 @@ export async function saveGitHubConnection(
     githubAccountId: string;
     githubUsername: string;
     avatarUrl?: string | null;
+    accessToken?: string | null;
   }
 ) {
   const profile = await prisma.user.findUnique({
@@ -71,6 +72,7 @@ export async function saveGitHubConnection(
       githubAccountId: data.githubAccountId,
       githubUsername: data.githubUsername,
       avatarUrl: data.avatarUrl,
+      ...(data.accessToken ? { accessToken: data.accessToken } : {}),
       connectionStatus: 'connected',
     },
     create: {
@@ -78,6 +80,7 @@ export async function saveGitHubConnection(
       githubAccountId: data.githubAccountId,
       githubUsername: data.githubUsername,
       avatarUrl: data.avatarUrl,
+      accessToken: data.accessToken || null,
       connectionStatus: 'connected',
     },
   });

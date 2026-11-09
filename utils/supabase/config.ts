@@ -28,3 +28,4 @@ export function getSupabasePublishableKey(): string {
   }
   return envKey;
 }
+

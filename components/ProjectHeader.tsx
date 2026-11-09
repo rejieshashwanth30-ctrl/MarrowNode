@@ -3,7 +3,20 @@
 import React from 'react';
 import Link from 'next/link';
 import { Badge } from '@/components/ui/Badge';
-import { GitBranch, CheckCircle2, Database, Code2, Layers, RefreshCw, Clock, FolderGit2 } from 'lucide-react';
+import {
+  GitBranch,
+  CheckCircle2,
+  Database,
+  Code2,
+  Layers,
+  RefreshCw,
+  Clock,
+  FolderGit2,
+  Play,
+  Plus,
+  AlertCircle,
+  Loader2,
+} from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 
 interface ProjectHeaderProps {
@@ -22,12 +35,18 @@ interface ProjectHeaderProps {
   } | null;
   onRefresh?: () => void;
   isRefreshing?: boolean;
+  onAnalyze?: () => void;
+  isAnalyzing?: boolean;
+  onConnectRepo?: () => void;
 }
 
 export function ProjectHeader({
   project,
   onRefresh,
   isRefreshing = false,
+  onAnalyze,
+  isAnalyzing = false,
+  onConnectRepo,
 }: ProjectHeaderProps) {
   if (!project) {
     return (
@@ -46,11 +65,23 @@ export function ProjectHeader({
               </p>
             </div>
           </div>
-          <Link href="/onboarding">
-            <Button variant="primary" size="sm" className="text-xs font-sans font-medium">
+          {onConnectRepo ? (
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={onConnectRepo}
+              className="text-xs font-sans font-medium"
+            >
+              <Plus className="w-3.5 h-3.5 mr-1.5" />
               Connect Repository
             </Button>
-          </Link>
+          ) : (
+            <Link href="/onboarding">
+              <Button variant="primary" size="sm" className="text-xs font-sans font-medium">
+                Connect Repository
+              </Button>
+            </Link>
+          )}
         </div>
       </div>
     );
@@ -66,6 +97,8 @@ export function ProjectHeader({
       ? 'success'
       : project.analysisStatus === 'FAILED'
       ? 'copper'
+      : project.analysisStatus === 'RUNNING'
+      ? 'forest'
       : 'neutral';
 
   return (
@@ -83,14 +116,32 @@ export function ProjectHeader({
 
             <div className="flex items-center gap-1.5">
               <Badge variant={statusVariant} size="sm" className="gap-1 font-sans font-medium">
-                <CheckCircle2 className="w-3 h-3" />
-                {project.analysisStatus || 'PENDING'}
+                {isAnalyzing || project.analysisStatus === 'RUNNING' ? (
+                  <Loader2 className="w-3 h-3 animate-spin text-forest dark:text-[#88B094]" />
+                ) : project.analysisStatus === 'COMPLETED' ? (
+                  <CheckCircle2 className="w-3 h-3" />
+                ) : project.analysisStatus === 'FAILED' ? (
+                  <AlertCircle className="w-3 h-3 text-copper" />
+                ) : (
+                  <Clock className="w-3 h-3 text-text-muted" />
+                )}
+                <span>
+                  {isAnalyzing
+                    ? 'Analyzing...'
+                    : project.analysisStatus || 'PENDING'}
+                </span>
               </Badge>
 
               <Badge variant="neutral" size="sm" className="gap-1 font-sans font-medium">
                 <GitBranch className="w-3 h-3 text-text-muted" />
                 {project.defaultBranch || 'main'}
               </Badge>
+
+              {project.visibility && (
+                <Badge variant="neutral" size="sm" className="font-sans text-[10px] uppercase">
+                  {project.visibility}
+                </Badge>
+              )}
             </div>
           </div>
 
@@ -99,7 +150,7 @@ export function ProjectHeader({
               <Code2 className="w-3.5 h-3.5 text-text-secondary" />
               <span>Language:</span>
               <strong className="text-text-primary font-medium dark:text-[#E4E6E1]">
-                {project.primaryLanguage || 'Not available yet'}
+                {project.primaryLanguage || 'Detecting...'}
               </strong>
             </span>
 
@@ -107,17 +158,19 @@ export function ProjectHeader({
               <Layers className="w-3.5 h-3.5 text-text-secondary" />
               <span>Framework:</span>
               <strong className="text-text-primary font-medium dark:text-[#E4E6E1]">
-                {project.framework || 'Not available yet'}
+                {project.framework || 'Detecting...'}
               </strong>
             </span>
 
-            <span className="inline-flex items-center gap-1.5">
-              <Database className="w-3.5 h-3.5 text-text-secondary" />
-              <span>Database:</span>
-              <strong className="text-text-primary font-medium dark:text-[#E4E6E1]">
-                {project.database || 'Not available yet'}
-              </strong>
-            </span>
+            {project.database && (
+              <span className="inline-flex items-center gap-1.5">
+                <Database className="w-3.5 h-3.5 text-text-secondary" />
+                <span>Database:</span>
+                <strong className="text-text-primary font-medium dark:text-[#E4E6E1]">
+                  {project.database}
+                </strong>
+              </span>
+            )}
 
             <span className="inline-flex items-center gap-1.5 text-text-subtle">
               <Clock className="w-3 h-3" />
@@ -126,18 +179,60 @@ export function ProjectHeader({
           </div>
         </div>
 
-        {/* Right: Quick actions */}
-        <div className="flex items-center gap-2 self-start md:self-auto">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onRefresh}
-            loading={isRefreshing}
-            className="text-xs font-sans font-medium"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${isRefreshing ? 'animate-spin' : ''}`} />
-            Re-index delta
-          </Button>
+        {/* Right: Actions */}
+        <div className="flex items-center gap-2 self-start md:self-auto flex-wrap">
+          {onConnectRepo && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onConnectRepo}
+              className="text-xs font-sans font-medium"
+            >
+              <FolderGit2 className="w-3.5 h-3.5 mr-1.5" />
+              Repositories
+            </Button>
+          )}
+
+          {onAnalyze && (
+            <Button
+              variant={project.analysisStatus === 'COMPLETED' ? 'outline' : 'primary'}
+              size="sm"
+              onClick={onAnalyze}
+              loading={isAnalyzing}
+              disabled={isAnalyzing}
+              className="text-xs font-sans font-medium"
+            >
+              {isAnalyzing ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                  Analyzing...
+                </>
+              ) : project.analysisStatus === 'COMPLETED' ? (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
+                  Re-analyze
+                </>
+              ) : (
+                <>
+                  <Play className="w-3.5 h-3.5 mr-1.5 fill-current" />
+                  Start Analysis
+                </>
+              )}
+            </Button>
+          )}
+
+          {onRefresh && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onRefresh}
+              loading={isRefreshing}
+              className="text-xs font-sans font-medium"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+              Sync
+            </Button>
+          )}
         </div>
       </div>
     </div>
