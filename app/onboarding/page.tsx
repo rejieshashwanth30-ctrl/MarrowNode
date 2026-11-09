@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { createClient } from '@/utils/supabase/client';
+import { getAppOrigin } from '@/lib/origin';
 import {
   Github,
   CheckCircle2,
@@ -100,11 +101,11 @@ export default function OnboardingPage() {
   const handleConnectGitHub = async () => {
     try {
       const supabase = createClient();
-      const origin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
+      const origin = getAppOrigin();
       await supabase.auth.signInWithOAuth({
         provider: 'github',
         options: {
-          redirectTo: `${origin}/api/auth/callback?next=/onboarding`,
+          redirectTo: `${origin}/auth/callback?next=/onboarding`,
         },
       });
     } catch (err: any) {

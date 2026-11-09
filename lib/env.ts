@@ -38,7 +38,10 @@ export function validateEnv(): ValidatedEnv {
     DIRECT_URL: directUrl || dbUrl || '',
     NEXT_PUBLIC_SUPABASE_URL: supabaseUrl || '',
     NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: supabaseKey || '',
-    NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
+    NEXT_PUBLIC_APP_URL:
+      process.env.NEXT_PUBLIC_APP_URL ||
+      process.env.NEXT_PUBLIC_SITE_URL ||
+      (process.env.NEXT_PUBLIC_VERCEL_URL ? `https://${process.env.NEXT_PUBLIC_VERCEL_URL}` : 'http://localhost:3000'),
   };
 }
 

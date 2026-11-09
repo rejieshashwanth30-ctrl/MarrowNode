@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button';
 import { Card, CardHeader, CardContent } from '@/components/ui/Card';
 import { Github, ShieldCheck, AlertCircle } from 'lucide-react';
 import { createClient } from '@/utils/supabase/client';
+import { getAppOrigin } from '@/lib/origin';
 
 function AuthContent() {
   const router = useRouter();
@@ -46,13 +47,12 @@ function AuthContent() {
 
     try {
       const supabase = createClient();
-      const origin =
-        typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
+      const origin = getAppOrigin();
 
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'github',
         options: {
-          redirectTo: `${origin}/api/auth/callback?next=/dashboard`,
+          redirectTo: `${origin}/auth/callback?next=/dashboard`,
         },
       });
 
