@@ -13,7 +13,13 @@ export const dynamic = 'force-dynamic';
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get('code');
+  const errorParam = searchParams.get('error');
   const next = searchParams.get('next') ?? '/dashboard';
+
+  // If user cancelled authorization or GitHub returned an error
+  if (errorParam) {
+    return NextResponse.redirect(`${origin}/auth?error=${encodeURIComponent(errorParam)}`);
+  }
 
   if (code) {
     const supabase = createClient();

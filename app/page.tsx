@@ -124,17 +124,10 @@ export default function LandingPage() {
               {resolvedTheme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             </button>
 
-            <Link
-              href="/auth"
-              className="text-xs text-text-secondary hover:text-text-primary px-2.5 py-1.5 transition-colors font-medium dark:text-[#A7AFA9] dark:hover:text-white hidden sm:inline-block"
-            >
-              Sign In
-            </Link>
-
-            <Link href="/onboarding">
+            <Link href="/auth">
               <Button variant="primary" size="sm" className="font-sans font-medium text-xs">
                 <Github className="w-3.5 h-3.5 mr-1.5" />
-                <span>Connect GitHub</span>
+                <span>Continue with GitHub</span>
               </Button>
             </Link>
 
@@ -173,9 +166,10 @@ export default function LandingPage() {
             <div className="pt-2 border-t border-border dark:border-border-dark flex items-center justify-between">
               <Link
                 href="/auth"
-                className="text-xs text-text-secondary hover:text-text-primary dark:text-[#A7AFA9] font-medium"
+                className="flex items-center gap-2 text-xs text-text-primary dark:text-white font-medium"
               >
-                Sign In
+                <Github className="w-3.5 h-3.5" />
+                <span>Continue with GitHub</span>
               </Link>
             </div>
           </div>
@@ -199,16 +193,16 @@ export default function LandingPage() {
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-3">
-            <Link href="/onboarding" className="w-full sm:w-auto">
+            <Link href="/auth" className="w-full sm:w-auto">
               <Button variant="primary" size="lg" className="w-full sm:w-auto font-sans font-medium text-xs sm:text-sm h-10 px-5">
                 <Github className="w-4 h-4 mr-2" />
-                <span>Connect GitHub</span>
+                <span>Continue with GitHub</span>
               </Button>
             </Link>
 
             <Link href="/dashboard" className="w-full sm:w-auto">
               <Button variant="secondary" size="lg" className="w-full sm:w-auto font-sans font-medium text-xs sm:text-sm h-10 px-5">
-                <span>Explore Demo</span>
+                <span>Enter Workstation</span>
                 <ArrowRight className="w-4 h-4 ml-2 text-forest" />
               </Button>
             </Link>

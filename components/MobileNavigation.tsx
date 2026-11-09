@@ -52,7 +52,7 @@ export function MobileNavigation({
       await supabase.auth.signOut();
       await fetch('/api/auth/signout', { method: 'POST' });
     } catch (_) {}
-    router.push('/auth');
+    router.push('/');
     router.refresh();
   };
 

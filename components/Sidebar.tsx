@@ -53,7 +53,7 @@ export function Sidebar({ activeView, onSelectView, user, collapsed = false }: S
       await supabase.auth.signOut();
       await fetch('/api/auth/signout', { method: 'POST' });
     } catch (_) {}
-    router.push('/auth');
+    router.push('/');
     router.refresh();
   };
 

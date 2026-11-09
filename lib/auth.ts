@@ -57,6 +57,8 @@ export async function getOrCreateCurrentProfile(supabaseUser?: SupabaseUser) {
       displayName:
         authUser.user_metadata?.full_name ||
         authUser.user_metadata?.name ||
+        authUser.user_metadata?.user_name ||
+        authUser.user_metadata?.preferred_username ||
         authUser.email?.split('@')[0] ||
         'Developer',
       avatarUrl:
@@ -70,6 +72,8 @@ export async function getOrCreateCurrentProfile(supabaseUser?: SupabaseUser) {
       displayName:
         authUser.user_metadata?.full_name ||
         authUser.user_metadata?.name ||
+        authUser.user_metadata?.user_name ||
+        authUser.user_metadata?.preferred_username ||
         authUser.email?.split('@')[0] ||
         'Developer',
       avatarUrl:
