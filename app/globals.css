@@ -1,0 +1,86 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: #F5F4EF;
+    --foreground: #171918;
+    --surface: #FFFFFF;
+    --surface-muted: #ECEBE5;
+    --border: #D9DAD4;
+    --forest: #56735F;
+    --copper: #B56B45;
+    --text-primary: #171918;
+    --text-muted: #6F746F;
+  }
+
+  .dark {
+    --background: #0E1310;
+    --foreground: #F2F3EE;
+    --surface: #151C17;
+    --surface-muted: #1F2822;
+    --border: #28352D;
+    --forest: #6A8E75;
+    --copper: #C27750;
+    --text-primary: #F2F3EE;
+    --text-muted: #959D96;
+  }
+
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  ::selection {
+    background-color: #56735F;
+    color: #FFFFFF;
+  }
+
+  /* Custom subtle scrollbar for developer workstation */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: #D9DAD4;
+    border-radius: 3px;
+  }
+
+  .dark ::-webkit-scrollbar-thumb {
+    background: #28352D;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: #6F746F;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+  
+  /* Technical grid pattern background (very faint and restrained) */
+  .bg-grid-pattern {
+    background-size: 32px 32px;
+    background-image: 
+      linear-gradient(to right, rgba(23, 32, 27, 0.035) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(23, 32, 27, 0.035) 1px, transparent 1px);
+  }
+
+  .dark .bg-grid-pattern {
+    background-image: 
+      linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+  }
+}
+

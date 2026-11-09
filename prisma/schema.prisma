@@ -1,0 +1,158 @@
+// MarrowNode Prisma Schema
+// Connects to Neon PostgreSQL with pooled connection for runtime and direct connection for migrations
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum AnalysisStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+// -------------------------------------------------------------
+// USER / PROFILE MODEL
+// Anchored by supabaseUserId to the authenticated Supabase user
+// -------------------------------------------------------------
+model User {
+  id               String            @id @default(cuid())
+  supabaseUserId   String            @unique
+  email            String            @unique
+  displayName      String?
+  avatarUrl        String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  githubConnection GitHubConnection?
+  projects         Project[]
+
+  @@map("users")
+}
+
+// -------------------------------------------------------------
+// GITHUB CONNECTION MODEL
+// Stores non-sensitive GitHub profile metadata for the user
+// -------------------------------------------------------------
+model GitHubConnection {
+  id               String   @id @default(cuid())
+  userId           String   @unique
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  githubAccountId  String
+  githubUsername   String
+  avatarUrl        String?
+  connectionStatus String   @default("connected")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@map("github_connections")
+}
+
+// -------------------------------------------------------------
+// PROJECT MODEL
+// Represents an indexed developer codebase workspace
+// -------------------------------------------------------------
+model Project {
+  id                   String         @id @default(cuid())
+  ownerId              String
+  owner                User           @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  name                 String
+  description          String?
+  githubRepositoryId   String?
+  githubRepositoryName String?
+  githubOwner          String?
+  defaultBranch        String         @default("main")
+  visibility           String         @default("private")
+  primaryLanguage      String?
+  framework            String?
+  database             String?
+  analysisStatus       AnalysisStatus @default(PENDING)
+  lastAnalyzedAt       DateTime?
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+
+  repository           Repository?
+  analyses             Analysis[]
+  evidences            Evidence[]
+
+  @@index([ownerId])
+  @@map("projects")
+}
+
+// -------------------------------------------------------------
+// REPOSITORY MODEL
+// Metadata about the linked GitHub repository
+// -------------------------------------------------------------
+model Repository {
+  id            String    @id @default(cuid())
+  projectId     String    @unique
+  project       Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  githubRepoId  String?
+  owner         String
+  name          String
+  fullName      String
+  url           String
+  defaultBranch String    @default("main")
+  isPrivate     Boolean   @default(true)
+  language      String?
+  description   String?
+  stars         Int       @default(0)
+  isFork        Boolean   @default(false)
+  lastSyncedAt  DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@map("repositories")
+}
+
+// -------------------------------------------------------------
+// ANALYSIS MODEL
+// Historical analysis runs and status checkpoints
+// -------------------------------------------------------------
+model Analysis {
+  id                   String         @id @default(cuid())
+  projectId            String
+  project              Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  status               AnalysisStatus @default(PENDING)
+  startedAt            DateTime?
+  completedAt          DateTime?
+  filesAnalyzed        Int            @default(0)
+  commitsAnalyzed      Int            @default(0)
+  dependenciesDetected Int            @default(0)
+  architectureNodes    Int            @default(0)
+  evidenceCount        Int            @default(0)
+  errorMessage         String?
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+
+  @@index([projectId])
+  @@map("analyses")
+}
+
+// -------------------------------------------------------------
+// EVIDENCE MODEL
+// Evidence-backed intelligence for software context & decisions
+// -------------------------------------------------------------
+model Evidence {
+  id          String   @id @default(cuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  type        String   // files, commits, pull_requests, documentation, dependencies, architecture
+  title       String
+  path        String?
+  externalUrl String?
+  reference   String?
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  @@index([projectId])
+  @@map("evidences")
+}
+
