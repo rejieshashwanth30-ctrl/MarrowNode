@@ -23,8 +23,8 @@ export async function GET(request: NextRequest) {
   const errorDescription = requestUrl.searchParams.get('error_description');
   const rawNext = requestUrl.searchParams.get('next');
 
-  // Dynamically resolve application origin
-  const appOrigin = getAppOrigin();
+  // Dynamically resolve application origin (anchored to canonical public production domain)
+  const appOrigin = getAppOrigin(request);
   const safeNext = sanitizeRedirectPath(rawNext, '/dashboard');
   const finalUrl = `${appOrigin}${safeNext}`;
 
