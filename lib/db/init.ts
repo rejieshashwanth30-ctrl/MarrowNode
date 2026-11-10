@@ -19,19 +19,21 @@ export async function ensureMarrowNodeSchema(): Promise<boolean> {
 
   initPromise = (async () => {
     try {
-      // 1. Fast check: see if marrownode.users already exists
-      const tableCheck: any[] = await prisma.$queryRawUnsafe(`
-        SELECT 1 AS exists FROM information_schema.tables 
-        WHERE table_schema = 'marrownode' AND table_name = 'users' 
+      // 1. Fast check: verify marrownode schema and critical modernized columns exist
+      const schemaCheck: any[] = await prisma.$queryRawUnsafe(`
+        SELECT column_name FROM information_schema.columns 
+        WHERE table_schema = 'marrownode' 
+          AND table_name = 'projects' 
+          AND column_name = 'isActive'
         LIMIT 1;
       `);
 
-      if (tableCheck.length > 0 && tableCheck[0]?.exists) {
+      if (schemaCheck.length > 0) {
         isInitialized = true;
         return true;
       }
 
-      console.log('[MarrowNode DB Init] marrownode schema or tables missing. Provisioning now...');
+      console.log('[MarrowNode DB Init] marrownode schema, tables, or modernized columns missing. Provisioning now...');
 
       // 2. Execute idempotent schema DDL
       await prisma.$executeRawUnsafe(`

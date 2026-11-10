@@ -85,6 +85,23 @@ export async function GET() {
     responseData.tables.analyses = existingTables.has('analyses');
     responseData.tables.evidences = existingTables.has('evidences');
 
+    // Query critical columns to detect schema drift early
+    const columnsQuery: Array<{ table_name: string; column_name: string }> = await prisma.$queryRawUnsafe(`
+      SELECT table_name, column_name 
+      FROM information_schema.columns 
+      WHERE table_schema = 'marrownode' AND (
+        (table_name = 'projects' AND column_name = 'isActive') OR
+        (table_name = 'repositories' AND column_name = 'currentCommitSha') OR
+        (table_name = 'analyses' AND column_name = 'coverage')
+      );
+    `);
+
+    responseData.columns = {
+      projects_isActive: columnsQuery.some((c) => c.table_name === 'projects' && c.column_name === 'isActive'),
+      repositories_currentCommitSha: columnsQuery.some((c) => c.table_name === 'repositories' && c.column_name === 'currentCommitSha'),
+      analyses_coverage: columnsQuery.some((c) => c.table_name === 'analyses' && c.column_name === 'coverage'),
+    };
+
     // Test Prisma model query
     const userCount = await prisma.user.count();
     responseData.diagnostic.prismaUserCount = userCount;
@@ -113,7 +130,9 @@ export async function GET() {
   }
 
   const allTablesOk = Object.values(responseData.tables).every(Boolean);
-  if (!allTablesOk || !responseData.services.neonPostgres.connected) {
+  const allColumnsOk = responseData.columns ? Object.values(responseData.columns).every(Boolean) : true;
+
+  if (!allTablesOk || !allColumnsOk || !responseData.services.neonPostgres.connected) {
     responseData.status = 'degraded';
   }
 

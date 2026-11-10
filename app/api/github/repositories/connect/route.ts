@@ -134,8 +134,19 @@ export async function POST(request: NextRequest) {
     }
 
     console.error('[MarrowNode Repository Connect Error]:', error);
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    const isInternalDbError =
+      errorMsg.includes('prisma') ||
+      errorMsg.includes('column') ||
+      errorMsg.includes('database') ||
+      errorMsg.includes('relation');
+
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to connect repository' },
+      {
+        error: isInternalDbError
+          ? 'MarrowNode is temporarily synchronizing its project data. Please try again in a moment.'
+          : errorMsg,
+      },
       { status: 500 }
     );
   }
