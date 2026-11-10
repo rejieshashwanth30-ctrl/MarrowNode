@@ -397,27 +397,27 @@ export async function getProjectWorkstationContext(
     });
   }
 
-  // Compute honest, mathematical coverage metrics from actual analysis snapshot
+  // Compute honest, mathematical coverage metrics from actual analysis snapshot (no artificial floors)
   let computedCoverage = (latestAnalysis?.summaryJson as any)?.coverage || null;
   if (!computedCoverage && latestAnalysis && latestAnalysis.status === 'COMPLETED') {
     const codebaseUnderstanding = Math.min(
       100,
-      Math.max(20, Math.round(totalFilesCount > 0 ? (Math.min(fileTree.length, totalFilesCount) / totalFilesCount) * 100 : 0))
+      Math.round(totalFilesCount > 0 ? (fileTree.length / totalFilesCount) * 100 : 0)
     );
     const architectureMapping = Math.min(
       100,
-      Math.max(25, Math.round(modules.length > 0 ? (nodes.length / Math.max(1, modules.length)) * 100 : 0))
+      Math.round(modules.length > 0 ? (nodes.length / modules.length) * 100 : 0)
     );
     const gitHistory = timeline.length > 0 ? Math.min(100, Math.round((timeline.length / 10) * 100)) : 0;
-    const dependencyMapping = dependencies.length > 0 ? 95 : 50;
+    const dependencyMapping = dependencies.length > 0 ? 100 : 0;
     const documentation = hasReadme ? (readmePreview && readmePreview.length > 100 ? 100 : 60) : 0;
 
     const overallPercentage = Math.round(
-      codebaseUnderstanding * 0.3 +
+      codebaseUnderstanding * 0.30 +
         architectureMapping * 0.25 +
-        gitHistory * 0.2 +
+        gitHistory * 0.20 +
         dependencyMapping * 0.15 +
-        documentation * 0.1
+        documentation * 0.10
     );
 
     computedCoverage = {

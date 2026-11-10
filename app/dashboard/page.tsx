@@ -579,6 +579,7 @@ export default function DashboardPage() {
             {activeView === 'impact' && (
               <div className="animate-in fade-in-50 duration-150">
                 <ChangeImpactAnalysis
+                  projectId={selectedProject?.id}
                   hasAnalyzedProject={latestAnalysis && latestAnalysis.status === 'COMPLETED'}
                   hasProject={Boolean(selectedProject)}
                   isAnalyzing={isAnalyzing || selectedProject?.analysisStatus === 'RUNNING'}

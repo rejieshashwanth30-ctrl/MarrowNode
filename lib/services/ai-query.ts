@@ -87,6 +87,14 @@ function synthesizeDeterministicAnswer(
   let unknown = '';
   let confidence: 'High' | 'Medium' | 'Low' = 'High';
 
+  const isMotivationQuery =
+    q.startsWith('why') ||
+    q.includes('why was') ||
+    q.includes('why did') ||
+    q.includes('rationale') ||
+    q.includes('motivation') ||
+    q.includes('decision to');
+
   if (q.includes('auth') || q.includes('login') || q.includes('supabase') || q.includes('session')) {
     const authFiles = context.fileTree
       .flatMap(function flatten(n): string[] {
@@ -100,7 +108,9 @@ function synthesizeDeterministicAnswer(
     if (usesSupabase || authFiles.length > 0) {
       fact = `Authentication is anchored through ${usesSupabase ? 'Supabase Auth' : 'custom route handlers'}. Key implementation files detected: ${authFiles.slice(0, 4).join(', ')}.`;
       inference = 'Session tokens and user identity are managed on the server side with cookie-based middleware propagation.';
-      unknown = 'Original business considerations for selecting this authentication strategy are not documented in source files.';
+      unknown = isMotivationQuery
+        ? 'UNKNOWN: Insufficient repository evidence to determine the original business motivation or decision rationale for selecting this authentication strategy.'
+        : 'Specific cloud session expiration thresholds and MFA policies are not specified in source code.';
       authFiles.slice(0, 4).forEach((f) => citations.push({ path: f, label: f, type: 'File' }));
     } else {
       fact = 'No standard Supabase or OAuth authentication library was identified in repository package manifests.';
@@ -115,13 +125,17 @@ function synthesizeDeterministicAnswer(
     inference = hasPrisma
       ? 'Database models and migrations are defined in prisma/schema.prisma and accessed via generated client bindings.'
       : 'Database schema is referenced in backend application services.';
-    unknown = 'Database hosting infrastructure tiers and connection pool sizes cannot be determined from code alone.';
+    unknown = isMotivationQuery
+      ? 'UNKNOWN: Insufficient repository evidence to determine why this ORM or database provider was chosen.'
+      : 'Database hosting infrastructure tiers and connection pool sizes cannot be determined from code alone.';
 
     if (hasPrisma) citations.push({ path: 'prisma/schema.prisma', label: 'prisma/schema.prisma', type: 'Schema' });
   } else if (q.includes('framework') || q.includes('tech') || q.includes('stack') || q.includes('built with')) {
     fact = `The repository is built with ${context.summary.framework} using ${context.summary.topLanguage}. Key dependencies include: ${context.dependencies.slice(0, 6).join(', ')}.`;
     inference = `Architectural boundaries are structured around ${context.modules.slice(0, 4).map((m) => `/${m}`).join(', ')}.`;
-    unknown = 'Target deployment SLA and cloud infrastructure orchestration are not specified in the codebase.';
+    unknown = isMotivationQuery
+      ? 'UNKNOWN: Insufficient repository evidence to determine why this framework was chosen over alternatives.'
+      : 'Target deployment SLA and cloud infrastructure orchestration are not specified in the codebase.';
     citations.push({ path: 'package.json', label: 'package.json', type: 'Manifest' });
   } else if (q.includes('change') || q.includes('commit') || q.includes('recent') || q.includes('history')) {
     if (context.timeline.length > 0) {
@@ -185,15 +199,16 @@ export async function askProjectQuestion(params: {
     throw new Error('Query cannot be empty');
   }
 
-  // Check in-memory cache
-  const cacheKey = `${projectId}:${trimmedQuery.toLowerCase()}`;
+  // Retrieve validated workstation context (strictly verifies ownership)
+  const context = await getProjectWorkstationContext(projectId);
+
+  // Check in-memory cache keyed by projectId + latestAnalysisId + query
+  const cacheKey = `${projectId}:${context.latestAnalysis?.id || 'initial'}:${trimmedQuery.toLowerCase()}`;
   const cachedEntry = queryCache.get(cacheKey);
   if (cachedEntry && Date.now() - cachedEntry.timestamp < CACHE_TTL_MS) {
     return { ...cachedEntry.result, cached: true };
   }
 
-  // Retrieve validated workstation context (strictly verifies ownership)
-  const context = await getProjectWorkstationContext(projectId);
   const evidence = extractRelevantEvidence(context, trimmedQuery);
 
   // Fallback: Deterministic grounded synthesis
@@ -204,3 +219,4 @@ export async function askProjectQuestion(params: {
 
   return result;
 }
+

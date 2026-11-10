@@ -258,7 +258,8 @@ export async function fetchRepoCommits(
 }
 
 /**
- * Fetch raw file content (e.g., README.md, package.json, requirements.txt)
+ * Fetch raw file content (e.g., README.md, package.json, requirements.txt, tsconfig.json)
+ * Encodes each path segment individually so directory separators remain intact.
  */
 export async function fetchRepoFileContent(
   token: string,
@@ -267,10 +268,16 @@ export async function fetchRepoFileContent(
   path: string
 ): Promise<string | null> {
   try {
+    const cleanPath = path.replace(/^\/+/, '');
+    const encodedPath = cleanPath
+      .split('/')
+      .map((segment) => encodeURIComponent(segment))
+      .join('/');
+
     const data = await githubRequest<{
       content: string;
       encoding: string;
-    }>(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${encodeURIComponent(path)}`, token);
+    }>(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${encodedPath}`, token);
 
     if (data.encoding === 'base64' && data.content) {
       return Buffer.from(data.content.replace(/\n/g, ''), 'base64').toString('utf8');
