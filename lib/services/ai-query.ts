@@ -95,7 +95,31 @@ function synthesizeDeterministicAnswer(
     q.includes('motivation') ||
     q.includes('decision to');
 
-  if (q.includes('auth') || q.includes('login') || q.includes('supabase') || q.includes('session')) {
+  const parsedScopeStr = `${context.coverage?.files?.parsed || 0} of ${context.coverage?.files?.source || context.summary.totalFiles} source files indexed`;
+
+  // Check for technology presence inquiries (e.g., "Does this repo use Redis?", "Do we use Docker?", "Is GraphQL used?")
+  const techQueryMatch = q.match(/(?:does\s+(?:this\s+)?(?:repo|project|codebase)\s+use|do\s+we\s+use|is\s+there\s+any)\s+([a-zA-Z0-9_\-\.]+)/i);
+  const askedTech = techQueryMatch ? techQueryMatch[1].toLowerCase() : null;
+
+  if (askedTech && !['auth', 'database', 'db', 'framework'].includes(askedTech)) {
+    const isPresentInDeps = context.dependencies.some((d) => d.toLowerCase().includes(askedTech));
+    const isPresentInFiles = context.fileTree.some(function checkTree(n): boolean {
+      if (n.name.toLowerCase().includes(askedTech)) return true;
+      if (n.children) return n.children.some(checkTree);
+      return false;
+    });
+
+    if (isPresentInDeps || isPresentInFiles) {
+      fact = `Based on the analyzed repository evidence (${parsedScopeStr}), ${askedTech} usage was confirmed in repository dependencies/files.`;
+      inference = `Components interacting with ${askedTech} are integrated into the ${context.summary.framework} project configuration.`;
+      citations.push({ path: 'package.json', label: `${askedTech} reference`, type: 'Manifest' });
+    } else {
+      fact = `No ${askedTech} usage was found in the analyzed repository evidence (${parsedScopeStr}).`;
+      inference = `Neither package manifests nor indexed source files contain direct references to ${askedTech}.`;
+      unknown = `Unindexed files outside the current analysis scope (${context.coverage?.files?.coveragePercent || 0}% coverage) could potentially reference this technology.`;
+      confidence = 'Medium';
+    }
+  } else if (q.includes('auth') || q.includes('login') || q.includes('supabase') || q.includes('session')) {
     const authFiles = context.fileTree
       .flatMap(function flatten(n): string[] {
         return n.type === 'file' ? [n.path] : (n.children ? n.children.flatMap(flatten) : []);
@@ -106,14 +130,14 @@ function synthesizeDeterministicAnswer(
       authFiles.some((f) => f.includes('supabase'));
 
     if (usesSupabase || authFiles.length > 0) {
-      fact = `Authentication is anchored through ${usesSupabase ? 'Supabase Auth' : 'custom route handlers'}. Key implementation files detected: ${authFiles.slice(0, 4).join(', ')}.`;
+      fact = `Based on the analyzed repository evidence (${parsedScopeStr}), authentication is anchored through ${usesSupabase ? 'Supabase Auth' : 'custom route handlers'}. Key implementation files detected: ${authFiles.slice(0, 4).join(', ')}.`;
       inference = 'Session tokens and user identity are managed on the server side with cookie-based middleware propagation.';
       unknown = isMotivationQuery
         ? 'UNKNOWN: Insufficient repository evidence to determine the original business motivation or decision rationale for selecting this authentication strategy.'
         : 'Specific cloud session expiration thresholds and MFA policies are not specified in source code.';
       authFiles.slice(0, 4).forEach((f) => citations.push({ path: f, label: f, type: 'File' }));
     } else {
-      fact = 'No standard Supabase or OAuth authentication library was identified in repository package manifests.';
+      fact = `No standard Supabase or OAuth authentication library was identified in the analyzed repository evidence (${parsedScopeStr}).`;
       unknown = 'Authentication mechanics cannot be determined from indexed files.';
       confidence = 'Low';
     }
@@ -121,7 +145,7 @@ function synthesizeDeterministicAnswer(
     const hasPrisma = context.dependencies.some((d) => d.includes('prisma')) ||
       context.fileTree.some((n) => n.path.includes('prisma'));
 
-    fact = `Database interaction is managed via ${hasPrisma ? 'Prisma ORM with PostgreSQL' : (context.project.database || 'standard relational drivers')}.`;
+    fact = `Based on the analyzed repository evidence (${parsedScopeStr}), database interaction is managed via ${hasPrisma ? 'Prisma ORM with PostgreSQL' : (context.project.database || 'standard relational drivers')}.`;
     inference = hasPrisma
       ? 'Database models and migrations are defined in prisma/schema.prisma and accessed via generated client bindings.'
       : 'Database schema is referenced in backend application services.';
@@ -131,7 +155,7 @@ function synthesizeDeterministicAnswer(
 
     if (hasPrisma) citations.push({ path: 'prisma/schema.prisma', label: 'prisma/schema.prisma', type: 'Schema' });
   } else if (q.includes('framework') || q.includes('tech') || q.includes('stack') || q.includes('built with')) {
-    fact = `The repository is built with ${context.summary.framework} using ${context.summary.topLanguage}. Key dependencies include: ${context.dependencies.slice(0, 6).join(', ')}.`;
+    fact = `Based on the analyzed repository evidence (${parsedScopeStr}), the repository is built with ${context.summary.framework} using ${context.summary.topLanguage}. Key dependencies include: ${context.dependencies.slice(0, 6).join(', ')}.`;
     inference = `Architectural boundaries are structured around ${context.modules.slice(0, 4).map((m) => `/${m}`).join(', ')}.`;
     unknown = isMotivationQuery
       ? 'UNKNOWN: Insufficient repository evidence to determine why this framework was chosen over alternatives.'
@@ -140,7 +164,7 @@ function synthesizeDeterministicAnswer(
   } else if (q.includes('change') || q.includes('commit') || q.includes('recent') || q.includes('history')) {
     if (context.timeline.length > 0) {
       const topCommits = context.timeline.slice(0, 3);
-      fact = `Recent development history reflects ${context.timeline.length} indexed commits. Latest: "${topCommits[0]?.title}" (${topCommits[0]?.commitShort}) by ${topCommits[0]?.author.name}.`;
+      fact = `Based on the analyzed repository evidence (${context.coverage?.git?.historyScope || `${context.timeline.length} commits`}), latest commit is: "${topCommits[0]?.title}" (${topCommits[0]?.commitShort}) by ${topCommits[0]?.author.name}.`;
       inference = `Active development focus involves ${topCommits.map((c) => c.title).slice(0, 2).join(' and ')}.`;
       unknown = 'Private branches or commits outside the default branch are not reflected in this snapshot.';
       topCommits.forEach((c) => citations.push({ path: c.commitShort, label: `Commit ${c.commitShort}`, type: 'Commit' }));
@@ -153,12 +177,12 @@ function synthesizeDeterministicAnswer(
     const fileList = evidence.matchedFiles.slice(0, 4).join(', ');
     const depList = evidence.matchedDependencies.join(', ');
 
-    fact = `Repository inspection identified matching entities: ${fileList ? `Files [${fileList}]` : ''} ${depList ? `Libraries [${depList}]` : ''}.`;
+    fact = `Based on the analyzed repository evidence (${parsedScopeStr}), inspection identified matching entities: ${fileList ? `Files [${fileList}]` : ''} ${depList ? `Libraries [${depList}]` : ''}.`;
     inference = `These components participate in the ${context.summary.framework} module architecture.`;
     unknown = 'Specific runtime behavioral flows require static AST verification.';
     evidence.matchedFiles.slice(0, 4).forEach((f) => citations.push({ path: f, label: f, type: 'File' }));
   } else {
-    fact = `The project is a ${context.summary.framework} codebase with ${context.summary.totalFiles} files.`;
+    fact = `Based on the analyzed repository evidence (${parsedScopeStr}), the project is a ${context.summary.framework} codebase with ${context.summary.totalFiles} discovered files.`;
     inference = 'The requested topic was not directly matched in indexed file paths, dependencies, or commit logs.';
     unknown = 'Insufficient repository evidence to determine this specific question with high confidence.';
     confidence = 'Low';

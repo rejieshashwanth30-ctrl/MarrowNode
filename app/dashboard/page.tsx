@@ -400,27 +400,35 @@ export default function DashboardPage() {
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4 font-sans">
                   <div className="p-3.5 rounded bg-surface border border-border dark:bg-[#151C17] dark:border-border-dark">
                     <div className="flex items-center justify-between text-text-muted mb-1">
-                      <span className="text-[11px] uppercase tracking-wider font-medium">Analyzed Files</span>
+                      <span className="text-[11px] uppercase tracking-wider font-medium">Source Files</span>
                       <FileCode2 className="w-3.5 h-3.5 text-forest" />
                     </div>
                     <div className="text-xl sm:text-2xl font-bold text-text-primary dark:text-white">
-                      {latestAnalysis?.filesAnalyzed ?? 0}
+                      {projectContext?.coverage?.files
+                        ? `${projectContext.coverage.files.parsed} / ${projectContext.coverage.files.source}`
+                        : (latestAnalysis?.filesAnalyzed ?? 0)}
                     </div>
                     <div className="text-xs text-text-muted mt-1">
-                      {latestAnalysis ? `${latestAnalysis.filesAnalyzed} source files indexed` : 'Analysis not available yet'}
+                      {projectContext?.coverage?.files
+                        ? `${projectContext.coverage.files.coveragePercent}% source coverage (${projectContext.coverage.files.discovered} discovered)`
+                        : (latestAnalysis ? `${latestAnalysis.filesAnalyzed} files indexed` : 'Analysis not available yet')}
                     </div>
                   </div>
 
                   <div className="p-3.5 rounded bg-surface border border-border dark:bg-[#151C17] dark:border-border-dark">
                     <div className="flex items-center justify-between text-text-muted mb-1">
-                      <span className="text-[11px] uppercase tracking-wider font-medium">Architecture Nodes</span>
+                      <span className="text-[11px] uppercase tracking-wider font-medium">Import Linkages</span>
                       <Network className="w-3.5 h-3.5 text-forest" />
                     </div>
                     <div className="text-xl sm:text-2xl font-bold text-text-primary dark:text-white">
-                      {latestAnalysis?.architectureNodes ?? 0}
+                      {projectContext?.coverage?.imports
+                        ? `${projectContext.coverage.imports.resolved} / ${projectContext.coverage.imports.total}`
+                        : (latestAnalysis?.architectureNodes ?? 0)}
                     </div>
                     <div className="text-xs text-text-muted mt-1">
-                      {latestAnalysis ? `${latestAnalysis.dependenciesDetected ?? 0} dependency bounds` : 'Analysis not available yet'}
+                      {projectContext?.coverage?.imports
+                        ? `${projectContext.coverage.imports.resolutionPercent}% resolved (${projectContext.coverage.imports.unresolved} unlinked)`
+                        : (latestAnalysis ? `${latestAnalysis.dependenciesDetected ?? 0} dependencies` : 'Analysis not available yet')}
                     </div>
                   </div>
 
@@ -430,10 +438,10 @@ export default function DashboardPage() {
                       <GitCommit className="w-3.5 h-3.5 text-copper" />
                     </div>
                     <div className="text-xl sm:text-2xl font-bold text-text-primary dark:text-white">
-                      {latestAnalysis?.commitsAnalyzed ?? 0}
+                      {projectContext?.coverage?.git?.commitsIndexed ?? (latestAnalysis?.commitsAnalyzed ?? 0)}
                     </div>
                     <div className="text-xs text-text-muted mt-1">
-                      {latestAnalysis ? 'Indexed with author blame' : 'Analysis not available yet'}
+                      {projectContext?.coverage?.git?.historyScope ?? (latestAnalysis ? 'Indexed with author blame' : 'Analysis not available yet')}
                     </div>
                   </div>
 
@@ -443,10 +451,12 @@ export default function DashboardPage() {
                       <ShieldCheck className="w-3.5 h-3.5 text-forest" />
                     </div>
                     <div className="text-xl sm:text-2xl font-bold text-text-primary dark:text-white">
-                      {selectedProject._count?.evidences ?? latestAnalysis?.evidenceCount ?? 0}
+                      {projectContext?.evidenceItems?.length ?? (selectedProject._count?.evidences ?? latestAnalysis?.evidenceCount ?? 0)}
                     </div>
                     <div className="text-xs text-text-muted mt-1">
-                      Verified citations & PR links
+                      {projectContext?.coverage?.documentation
+                        ? `${projectContext.coverage.documentation.filesDetected} doc artifacts detected`
+                        : 'Verified citations & AST evidence'}
                     </div>
                   </div>
                 </div>

@@ -309,7 +309,7 @@ export function ChangeImpactAnalysis({
             </span>
             <div className={`text-xl font-bold font-mono ${blastColor}`}>{blastRating}</div>
             <span className="text-[11px] text-text-muted mt-1 block">
-              Confidence score: 100% deterministic AST
+              Evidence model: AST graph traversal
             </span>
           </div>
 

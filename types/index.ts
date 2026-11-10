@@ -24,25 +24,74 @@ export interface RepositorySummary {
   analyzed: boolean;
 }
 
-export interface ContextCoverage {
-  overallPercentage: number;
-  breakdown: {
+export interface AnalysisCoverage {
+  files: {
+    discovered: number;
+    source: number;
+    parsed: number;
+    failed: number;
+    ignored: number;
+    coveragePercent: number;
+  };
+  architecture: {
+    modulesDetected: number;
+    modulesMapped: number;
+    unresolvedModules: number;
+    coveragePercent: number;
+    detectedModuleNames: string[];
+    unresolvedModuleNames: string[];
+  };
+  imports: {
+    total: number;
+    resolved: number;
+    unresolved: number;
+    external: number;
+    resolutionPercent: number;
+  };
+  dependencies: {
+    manifestsDetected: number;
+    manifestsParsed: number;
+    manifestParsingPercent: number;
+    declaredDependencies: number;
+    resolvedDependencies: number;
+    unresolvedDependencies: number;
+    usageResolutionPercent: number;
+  };
+  git: {
+    commitsDiscovered: number;
+    commitsIndexed: number;
+    coveragePercent: number;
+    historyScope: string;
+  };
+  documentation: {
+    filesDetected: number;
+    filesIndexed: number;
+    docTypes: string[];
+    hasReadme: boolean;
+  };
+  overallCoveragePercent: number;
+
+  // Compatibility aliases for existing UI bindings
+  overallPercentage?: number;
+  breakdown?: {
     codebaseUnderstanding: number;
     architectureMapping: number;
     gitHistory: number;
     documentation: number;
     dependencyMapping: number;
   };
-  metrics: {
+  metrics?: {
     totalFiles: number;
-    totalLinesOfCode: number;
-    modulesCount: number;
+    totalLinesOfCode?: number;
+    modulesCount?: number;
     commitsTracked: number;
     architectureNodes: number;
     relationshipsMapped: number;
-    evidenceItemsCount: number;
+    evidenceItemsCount?: number;
   };
 }
+
+export type ContextCoverage = AnalysisCoverage;
 
 export interface ProjectMetadata {
   id: string;
