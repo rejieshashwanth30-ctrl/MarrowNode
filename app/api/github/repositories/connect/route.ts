@@ -46,7 +46,13 @@ export async function POST(request: NextRequest) {
     // 4. Server-Side Authorization: Verify caller has real access to this repository on GitHub
     const repoDetails = await fetchRepositoryDetails(token, owner, name);
 
-    // 5. Locate or create Project for this repository under the current user's profile
+    // 5. Deactivate other projects for this user to guarantee single active project context
+    await prisma.project.updateMany({
+      where: { ownerId: profile.id, isActive: true },
+      data: { isActive: false },
+    }).catch(() => {});
+
+    // Locate or create Project for this repository under the current user's profile
     let project = await prisma.project.findFirst({
       where: {
         ownerId: profile.id,
@@ -69,6 +75,19 @@ export async function POST(request: NextRequest) {
           visibility: repoDetails.private ? 'private' : 'public',
           primaryLanguage: repoDetails.language,
           analysisStatus: 'PENDING',
+          isActive: true,
+        },
+        include: { repository: true },
+      });
+    } else {
+      project = await prisma.project.update({
+        where: { id: project.id },
+        data: {
+          isActive: true,
+          defaultBranch: repoDetails.default_branch || 'main',
+          visibility: repoDetails.private ? 'private' : 'public',
+          primaryLanguage: repoDetails.language || project.primaryLanguage,
+          updatedAt: new Date(),
         },
         include: { repository: true },
       });

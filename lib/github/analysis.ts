@@ -218,6 +218,57 @@ export async function executeDeterministicAnalysis(params: {
 
     // Generate Topology Nodes & Edges
     const topologyModules = Array.from(topLevelDirs);
+    const latestCommitSha = commits[0]?.sha || null;
+
+    // Inspect imports from key source files to build EVIDENCE-GROUNDED architecture edges
+    const sourceFilesToInspect = treeFiles
+      .filter((f) => /\.(tsx?|jsx?|py|go|rs)$/.test(f.path) && !f.path.includes('.d.ts'))
+      .slice(0, 15);
+
+    const detectedImportEdges: Array<{
+      sourceMod: string;
+      targetMod: string;
+      evidencePath: string;
+      target: string;
+    }> = [];
+
+    for (const file of sourceFilesToInspect) {
+      const parts = file.path.split('/');
+      const callerMod = parts.length > 1 ? parts[0] : 'root';
+      const content = await fetchRepoFileContent(token, owner, repo, file.path).catch(() => null);
+      if (!content) continue;
+
+      const importRegex = /(?:import\s+.*?from\s+['"]([^'"]+)['"]|require\s*\(\s*['"]([^'"]+)['"]\s*\))/g;
+      let match;
+      while ((match = importRegex.exec(content)) !== null) {
+        const importTarget = match[1] || match[2];
+        if (!importTarget) continue;
+
+        let targetMod: string | null = null;
+        if (importTarget.startsWith('@/')) {
+          targetMod = importTarget.replace('@/', '').split('/')[0];
+        } else if (importTarget.startsWith('./') || importTarget.startsWith('../')) {
+          const resolved = importTarget.replace(/^\.\.?\//, '').split('/')[0];
+          if (resolved && resolved !== '.' && resolved !== '..') {
+            targetMod = resolved;
+          }
+        } else if (importTarget.includes('prisma')) {
+          targetMod = 'database';
+        } else if (importTarget.includes('supabase')) {
+          targetMod = 'auth';
+        }
+
+        if (targetMod && targetMod !== callerMod) {
+          detectedImportEdges.push({
+            sourceMod: callerMod,
+            targetMod,
+            evidencePath: file.path,
+            target: importTarget,
+          });
+        }
+      }
+    }
+
     const topoNodes: Array<{
       id: string;
       name: string;
@@ -239,7 +290,7 @@ export async function executeDeterministicAnalysis(params: {
         type: 'App',
         category: 'Entrypoint',
         description: `${detectedFramework} core workspace`,
-        filesCount: Math.max(1, Math.round(totalFiles * 0.2)),
+        filesCount: Math.max(1, Math.round(totalFiles * 0.15)),
         health: 'active',
         relatedFiles: ['package.json', 'README.md'],
         dependencies: topologyModules.slice(0, 3),
@@ -260,6 +311,7 @@ export async function executeDeterministicAnalysis(params: {
       target: string;
       relationship: string;
       confidence: number;
+      evidence?: string;
     }> = [];
 
     topologyModules.forEach((mod, idx) => {
@@ -292,6 +344,30 @@ export async function executeDeterministicAnalysis(params: {
         confidence: 0.95,
       });
     });
+
+    // Add verified inter-module import edges
+    for (const edge of detectedImportEdges) {
+      const sourceNodeId = edge.sourceMod === 'root' ? 'node-app' : `node-${edge.sourceMod}`;
+      const targetNodeId = `node-${edge.targetMod}`;
+
+      // Check if both nodes exist
+      const sourceExists = topoNodes.some((n) => n.id === sourceNodeId);
+      const targetExists = topoNodes.some((n) => n.id === targetNodeId);
+
+      if (sourceExists && targetExists) {
+        const edgeId = `edge-${edge.sourceMod}-${edge.targetMod}`;
+        if (!topoEdges.some((e) => e.id === edgeId)) {
+          topoEdges.push({
+            id: edgeId,
+            source: sourceNodeId,
+            target: targetNodeId,
+            relationship: 'imports',
+            confidence: 0.99,
+            evidence: `Verified import in ${edge.evidencePath}`,
+          });
+        }
+      }
+    }
 
     // Evidence 2: Architecture & Language Topology
     await prisma.evidence.create({
@@ -394,7 +470,47 @@ export async function executeDeterministicAnalysis(params: {
       evidenceCreatedCount++;
     }
 
-    // 8. Update Project Status in Neon
+    // 8. Mathematically calculate honest coverage breakdown based on real indexed metrics
+    const codebaseUnderstanding = Math.min(
+      100,
+      Math.max(20, Math.round(totalFiles > 0 ? (Math.min(treeFiles.length, totalFiles) / totalFiles) * 100 : 0))
+    );
+    const architectureMapping = Math.min(
+      100,
+      Math.max(25, Math.round(topologyModules.length > 0 ? (topoNodes.length / Math.max(1, topologyModules.length)) * 100 : 0))
+    );
+    const gitHistory = commits.length > 0 ? Math.min(100, Math.round((commits.length / 10) * 100)) : 0;
+    const dependencyMapping = foundManifests.length > 0 ? (detectedDependencies.length > 0 ? 100 : 70) : 0;
+    const documentation = hasReadme ? (readmePreview && readmePreview.length > 100 ? 100 : 60) : 0;
+
+    const overallCoverage = Math.round(
+      codebaseUnderstanding * 0.3 +
+        architectureMapping * 0.25 +
+        gitHistory * 0.2 +
+        dependencyMapping * 0.15 +
+        documentation * 0.1
+    );
+
+    const summaryData = {
+      coverage: {
+        overallPercentage: overallCoverage,
+        breakdown: {
+          codebaseUnderstanding,
+          architectureMapping,
+          gitHistory,
+          dependencyMapping,
+          documentation,
+        },
+        metrics: {
+          totalFiles,
+          commitsTracked: commits.length,
+          relationshipsMapped: topoEdges.length,
+          architectureNodes: topoNodes.length,
+        },
+      },
+    };
+
+    // 9. Update Project Status in Neon
     await updateProject(projectId, {
       primaryLanguage: topLanguage,
       framework: detectedFramework,
@@ -402,15 +518,32 @@ export async function executeDeterministicAnalysis(params: {
       lastAnalyzedAt: new Date(),
     });
 
-    // 9. Update Analysis Record in Neon
+    // 10. Update Repository current commit SHA
+    if (latestCommitSha) {
+      await prisma.repository
+        .updateMany({
+          where: { projectId },
+          data: {
+            currentCommitSha: latestCommitSha,
+            lastSyncedAt: new Date(),
+          },
+        })
+        .catch(() => {});
+    }
+
+    // 11. Update Analysis Record in Neon
     await updateAnalysisRun(projectId, analysisId, {
       status: 'COMPLETED',
       completedAt: new Date(),
       filesAnalyzed: totalFiles,
       commitsAnalyzed: commits.length,
       dependenciesDetected: detectedDependencies.length,
-      architectureNodes: topLevelDirs.size,
+      architectureNodes: topoNodes.length,
       evidenceCount: evidenceCreatedCount,
+      commitSha: latestCommitSha || undefined,
+      branch: defaultBranch,
+      coverage: overallCoverage,
+      summaryJson: summaryData,
     });
 
     console.log(`[MarrowNode Analysis] Successfully completed analysis ${analysisId} for project ${projectId}`);

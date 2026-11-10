@@ -81,6 +81,7 @@ model Project {
   primaryLanguage      String?
   framework            String?
   database             String?
+  isActive             Boolean        @default(true)
   analysisStatus       AnalysisStatus @default(PENDING)
   lastAnalyzedAt       DateTime?
   createdAt            DateTime       @default(now())
@@ -100,23 +101,24 @@ model Project {
 // Metadata about the linked GitHub repository
 // -------------------------------------------------------------
 model Repository {
-  id            String    @id @default(cuid())
-  projectId     String    @unique
-  project       Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  githubRepoId  String?
-  owner         String
-  name          String
-  fullName      String
-  url           String
-  defaultBranch String    @default("main")
-  isPrivate     Boolean   @default(true)
-  language      String?
-  description   String?
-  stars         Int       @default(0)
-  isFork        Boolean   @default(false)
-  lastSyncedAt  DateTime?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id               String    @id @default(cuid())
+  projectId        String    @unique
+  project          Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  githubRepoId     String?
+  owner            String
+  name             String
+  fullName         String
+  url              String
+  defaultBranch    String    @default("main")
+  currentCommitSha String?
+  isPrivate        Boolean   @default(true)
+  language         String?
+  description      String?
+  stars            Int       @default(0)
+  isFork           Boolean   @default(false)
+  lastSyncedAt     DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   @@map("repositories")
   @@schema("marrownode")
@@ -131,6 +133,10 @@ model Analysis {
   projectId            String
   project              Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
   status               AnalysisStatus @default(PENDING)
+  commitSha            String?
+  branch               String?
+  coverage             Float?
+  analyzerVersion      String?        @default("v1.0")
   startedAt            DateTime?
   completedAt          DateTime?
   filesAnalyzed        Int            @default(0)
@@ -139,6 +145,7 @@ model Analysis {
   architectureNodes    Int            @default(0)
   evidenceCount        Int            @default(0)
   errorMessage         String?
+  summaryJson          Json?
   createdAt            DateTime       @default(now())
   updatedAt            DateTime       @updatedAt
 

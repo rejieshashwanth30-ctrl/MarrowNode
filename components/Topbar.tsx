@@ -19,9 +19,12 @@ interface TopbarProps {
   onToggleMobileNav?: () => void;
   mobileNavOpen?: boolean;
   project?: {
+    id?: string;
     name: string;
     githubOwner?: string | null;
   } | null;
+  projects?: Array<{ id: string; name: string; githubOwner?: string | null }>;
+  onSelectProject?: (projectId: string) => void;
 }
 
 export function Topbar({
@@ -29,8 +32,11 @@ export function Topbar({
   onToggleMobileNav,
   mobileNavOpen = false,
   project,
+  projects = [],
+  onSelectProject,
 }: TopbarProps) {
   const { resolvedTheme, setTheme } = useTheme();
+  const [dropdownOpen, setDropdownOpen] = React.useState(false);
 
   const toggleTheme = () => {
     setTheme(resolvedTheme === 'dark' ? 'light' : 'dark');
@@ -59,14 +65,55 @@ export function Topbar({
         </div>
 
         {/* Workspace & Repository Breadcrumb */}
-        <div className="hidden sm:flex items-center gap-2 text-xs font-sans text-text-secondary dark:text-[#A7AFA9]">
+        <div className="hidden sm:flex items-center gap-2 text-xs font-sans text-text-secondary dark:text-[#A7AFA9] relative">
           <span className="text-text-muted hover:text-text-primary transition-colors cursor-pointer">
             {owner}
           </span>
           <span className="text-border-strong">/</span>
-          <div className="flex items-center gap-1 font-semibold text-text-primary dark:text-white">
-            <span>{projectName}</span>
-          </div>
+          {projects.length > 1 ? (
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setDropdownOpen(!dropdownOpen)}
+                className="flex items-center gap-1 font-semibold text-text-primary dark:text-white hover:text-forest dark:hover:text-[#88B094] transition-colors py-1 px-1.5 rounded hover:bg-surface-muted dark:hover:bg-[#1A221D]"
+              >
+                <span>{projectName}</span>
+                <ChevronDown className="w-3.5 h-3.5 opacity-70" />
+              </button>
+
+              {dropdownOpen && (
+                <div className="absolute left-0 top-full mt-1.5 w-60 bg-surface border border-border dark:bg-[#151C17] dark:border-border-dark rounded-md shadow-xl py-1 z-50">
+                  <div className="px-3 py-1.5 text-[10px] uppercase font-semibold text-text-muted border-b border-border dark:border-border-dark">
+                    Switch Active Project
+                  </div>
+                  {projects.map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => {
+                        setDropdownOpen(false);
+                        if (onSelectProject) onSelectProject(p.id);
+                      }}
+                      className={`w-full text-left px-3 py-2 text-xs flex items-center justify-between hover:bg-surface-subtle dark:hover:bg-[#1A221D] transition-colors ${
+                        p.name === projectName
+                          ? 'font-bold text-forest dark:text-[#88B094]'
+                          : 'text-text-primary dark:text-white'
+                      }`}
+                    >
+                      <span className="truncate">{p.name}</span>
+                      {p.name === projectName && (
+                        <span className="text-[10px] text-forest dark:text-[#88B094]">Active</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="flex items-center gap-1 font-semibold text-text-primary dark:text-white">
+              <span>{projectName}</span>
+            </div>
+          )}
         </div>
       </div>
 

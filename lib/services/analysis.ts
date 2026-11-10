@@ -13,6 +13,11 @@ export interface CreateAnalysisInput {
   architectureNodes?: number;
   evidenceCount?: number;
   errorMessage?: string;
+  commitSha?: string;
+  branch?: string;
+  coverage?: number;
+  summaryJson?: any;
+  analyzerVersion?: string;
 }
 
 /**

@@ -4,18 +4,62 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { Search, Terminal, ShieldCheck } from 'lucide-react';
+import { Badge } from '@/components/ui/Badge';
+import { Search, Terminal, ShieldCheck, FileCode, Loader2 } from 'lucide-react';
 
 interface ProjectIntelligencePanelProps {
+  projectId?: string;
   hasAnalyzedProject?: boolean;
   onSelectEvidence?: (evidenceLabel: string) => void;
+  onConnectRepo?: () => void;
 }
 
 export function ProjectIntelligencePanel({
+  projectId,
   hasAnalyzedProject = false,
   onSelectEvidence,
+  onConnectRepo,
 }: ProjectIntelligencePanelProps) {
   const [query, setQuery] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<any | null>(null);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!query.trim() || !projectId || loading) return;
+
+    setLoading(true);
+    setResult(null);
+
+    try {
+      const res = await fetch(`/api/projects/${projectId}/ask`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: query.trim() }),
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        setResult(data.result);
+      } else {
+        setResult({
+          fact: null,
+          inference: null,
+          unknown: data.error || 'Failed to query codebase context.',
+          citations: [],
+        });
+      }
+    } catch (_) {
+      setResult({
+        fact: null,
+        inference: null,
+        unknown: 'Network error connecting to query engine.',
+        citations: [],
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   if (!hasAnalyzedProject) {
     return (
@@ -46,11 +90,14 @@ export function ProjectIntelligencePanel({
             </p>
           </div>
           <div className="pt-2">
-            <Link href="/onboarding">
-              <Button variant="outline" size="sm" className="text-xs font-sans font-medium">
-                Connect GitHub Repository
-              </Button>
-            </Link>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onConnectRepo}
+              className="text-xs font-sans font-medium"
+            >
+              Connect GitHub Repository
+            </Button>
           </div>
         </CardContent>
       </Card>
@@ -73,19 +120,14 @@ export function ProjectIntelligencePanel({
       </CardHeader>
 
       <CardContent className="p-4 sm:p-5 space-y-4">
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            setQuery('');
-          }}
-          className="relative"
-        >
+        <form onSubmit={handleSubmit} className="relative">
           <div className="relative flex items-center">
             <Search className="w-4 h-4 text-text-muted absolute left-3.5 pointer-events-none" />
             <input
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
+              disabled={loading}
               placeholder="Ask anything about this project… (e.g. How does authentication work?)"
               className="w-full h-10 pl-10 pr-24 bg-surface border border-border rounded text-xs font-sans text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-forest focus:border-forest transition-colors dark:bg-[#151C17] dark:border-border-dark dark:text-white"
             />
@@ -94,14 +136,61 @@ export function ProjectIntelligencePanel({
                 type="submit"
                 variant="primary"
                 size="sm"
-                disabled={!query.trim()}
-                className="h-7 text-xs font-sans font-medium px-3"
+                disabled={!query.trim() || loading}
+                className="h-7 text-xs font-sans font-medium px-3 gap-1"
               >
-                <span>Ask</span>
+                {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <span>Ask</span>}
               </Button>
             </div>
           </div>
         </form>
+
+        {result && (
+          <div className="p-4 rounded-lg bg-surface-subtle dark:bg-[#121814] border border-border dark:border-border-dark space-y-3 text-xs leading-relaxed font-sans animate-in fade-in-50">
+            {result.fact && (
+              <div className="p-2.5 rounded bg-forest/10 border border-forest/20 space-y-1">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-forest dark:text-[#88B094] block">
+                  FACT (Code Evidence)
+                </span>
+                <span className="text-text-primary dark:text-white">{result.fact}</span>
+              </div>
+            )}
+
+            {result.inference && (
+              <div className="p-2.5 rounded bg-copper/10 border border-copper/20 space-y-1">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-copper dark:text-[#E08F6B] block">
+                  INFERENCE
+                </span>
+                <span className="text-text-primary dark:text-white">{result.inference}</span>
+              </div>
+            )}
+
+            {result.unknown && (
+              <div className="p-2.5 rounded bg-surface border border-border dark:bg-[#1A221D] dark:border-border-dark text-text-muted space-y-1">
+                <span className="text-[10px] font-bold uppercase tracking-wider block">
+                  UNKNOWN
+                </span>
+                <span>{result.unknown}</span>
+              </div>
+            )}
+
+            {result.citations && result.citations.length > 0 && (
+              <div className="pt-2 border-t border-border dark:border-border-dark flex flex-wrap items-center gap-1.5">
+                <span className="text-[10px] uppercase font-semibold text-text-muted">Citations:</span>
+                {result.citations.map((c: any, i: number) => (
+                  <span
+                    key={i}
+                    onClick={() => onSelectEvidence && onSelectEvidence(c.path)}
+                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono bg-surface border border-border dark:bg-[#1A221D] dark:border-border-dark text-forest dark:text-[#88B094] cursor-pointer hover:underline"
+                  >
+                    <FileCode className="w-3 h-3" />
+                    <span>{c.label}</span>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </CardContent>
     </Card>
   );

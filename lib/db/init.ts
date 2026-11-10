@@ -152,6 +152,15 @@ export async function ensureMarrowNodeSchema(): Promise<boolean> {
         CREATE UNIQUE INDEX IF NOT EXISTS "repositories_projectId_key" ON "marrownode"."repositories"("projectId");
         CREATE INDEX IF NOT EXISTS "analyses_projectId_idx" ON "marrownode"."analyses"("projectId");
         CREATE INDEX IF NOT EXISTS "evidences_projectId_idx" ON "marrownode"."evidences"("projectId");
+
+        -- Safe idempotency updates for new fields on existing databases
+        ALTER TABLE "marrownode"."projects" ADD COLUMN IF NOT EXISTS "isActive" BOOLEAN NOT NULL DEFAULT true;
+        ALTER TABLE "marrownode"."repositories" ADD COLUMN IF NOT EXISTS "currentCommitSha" TEXT;
+        ALTER TABLE "marrownode"."analyses" ADD COLUMN IF NOT EXISTS "commitSha" TEXT;
+        ALTER TABLE "marrownode"."analyses" ADD COLUMN IF NOT EXISTS "branch" TEXT;
+        ALTER TABLE "marrownode"."analyses" ADD COLUMN IF NOT EXISTS "coverage" DOUBLE PRECISION;
+        ALTER TABLE "marrownode"."analyses" ADD COLUMN IF NOT EXISTS "analyzerVersion" TEXT DEFAULT 'v1.0';
+        ALTER TABLE "marrownode"."analyses" ADD COLUMN IF NOT EXISTS "summaryJson" JSONB;
       `);
 
       console.log('[MarrowNode DB Init] marrownode schema and tables successfully provisioned.');

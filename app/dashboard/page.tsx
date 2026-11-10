@@ -32,6 +32,7 @@ import {
   X,
   AlertCircle,
   Play,
+  CheckCircle2,
 } from 'lucide-react';
 
 export default function DashboardPage() {
@@ -50,6 +51,8 @@ export default function DashboardPage() {
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [showRepoModal, setShowRepoModal] = useState(false);
 
+  const [syncStatusMessage, setSyncStatusMessage] = useState<string | null>(null);
+
   const fetchProjectContext = async (projectId: string) => {
     try {
       setIsLoadingContext(true);
@@ -67,8 +70,10 @@ export default function DashboardPage() {
 
   const fetchDashboardData = async (targetProjectId?: string) => {
     try {
-      const [userRes, projectsRes] = await Promise.all([
+      // 1. Fetch user profile, active project, and all owned projects in parallel
+      const [userRes, activeRes, projectsRes] = await Promise.all([
         fetch('/api/user/me'),
+        fetch('/api/projects/active'),
         fetch('/api/projects'),
       ]);
 
@@ -86,10 +91,18 @@ export default function DashboardPage() {
         const projectsData = await projectsRes.json();
         const projs = projectsData.projects || [];
         setProjects(projs);
-        const activeId = targetProjectId || selectedProjectId || (projs.length > 0 ? projs[0].id : null);
-        if (activeId) {
-          setSelectedProjectId(activeId);
-          await fetchProjectContext(activeId);
+      }
+
+      if (activeRes.ok) {
+        const activeData = await activeRes.json();
+        if (activeData.hasActiveProject && activeData.project) {
+          const activeProjId = targetProjectId || activeData.project.id;
+          setSelectedProjectId(activeProjId);
+          if (activeData.context && activeProjId === activeData.project.id) {
+            setProjectContext(activeData.context);
+          } else {
+            await fetchProjectContext(activeProjId);
+          }
         }
       }
     } catch (err) {
@@ -103,15 +116,49 @@ export default function DashboardPage() {
     fetchDashboardData();
   }, []);
 
-  const handleSelectProject = (projectId: string) => {
+  const handleSelectProject = async (projectId: string) => {
     setSelectedProjectId(projectId);
-    fetchProjectContext(projectId);
+    try {
+      // Authoritatively persist active project switch to server Neon database
+      const res = await fetch('/api/projects/active', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setProjectContext(data.context);
+      } else {
+        await fetchProjectContext(projectId);
+      }
+    } catch (_) {
+      await fetchProjectContext(projectId);
+    }
   };
 
-  const handleRefresh = async () => {
+  const handleSyncProject = async () => {
+    if (!selectedProjectId) return;
     setIsRefreshing(true);
-    await fetchDashboardData(selectedProjectId || undefined);
-    setIsRefreshing(false);
+    setSyncStatusMessage(null);
+
+    try {
+      const res = await fetch(`/api/projects/${selectedProjectId}/sync`, {
+        method: 'POST',
+      });
+      const data = await res.json();
+
+      if (res.ok) {
+        setSyncStatusMessage(data.message || 'Repository successfully synchronized.');
+        setTimeout(() => setSyncStatusMessage(null), 4000);
+        await fetchDashboardData(selectedProjectId);
+      } else {
+        setAnalysisError(data.error || 'Failed to sync repository.');
+      }
+    } catch (err: any) {
+      setAnalysisError(err?.message || 'Sync operation failed.');
+    } finally {
+      setIsRefreshing(false);
+    }
   };
 
   const handleStartAnalysis = async (targetProjectId?: string) => {
@@ -190,6 +237,8 @@ export default function DashboardPage() {
           onToggleMobileNav={() => setIsMobileNavOpen(!isMobileNavOpen)}
           mobileNavOpen={isMobileNavOpen}
           project={selectedProject}
+          projects={projects}
+          onSelectProject={handleSelectProject}
         />
 
         {/* Scrollable Workstation Surface */}
@@ -197,12 +246,28 @@ export default function DashboardPage() {
           {/* Project Repository Header */}
           <ProjectHeader
             project={selectedProject}
-            onRefresh={handleRefresh}
+            onRefresh={handleSyncProject}
             isRefreshing={isRefreshing}
             onAnalyze={() => handleStartAnalysis()}
             isAnalyzing={isAnalyzing}
             onConnectRepo={() => setShowRepoModal(true)}
           />
+
+          {/* Sync status alert */}
+          {syncStatusMessage && (
+            <div className="p-3 mx-3.5 sm:mx-6 mt-3 rounded bg-forest/10 border border-forest/20 text-forest dark:text-[#88B094] text-xs flex items-center justify-between font-sans animate-in fade-in-50">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 shrink-0" />
+                <span>{syncStatusMessage}</span>
+              </div>
+              <button
+                onClick={() => setSyncStatusMessage(null)}
+                className="text-text-muted hover:text-text-primary dark:hover:text-white"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
 
           {/* Analysis error alert */}
           {analysisError && (
@@ -290,41 +355,19 @@ export default function DashboardPage() {
                 </div>
 
                 {/* Central Intelligence Callout */}
-                <ProjectIntelligencePanel hasAnalyzedProject={false} />
+                <ProjectIntelligencePanel
+                  hasAnalyzedProject={false}
+                  onConnectRepo={() => setShowRepoModal(true)}
+                />
               </div>
             ) : null}
 
             {/* If project IS present and on overview */}
             {selectedProject && activeView === 'overview' ? (
               <div className="space-y-6 animate-in fade-in-50 duration-150">
-                {/* 1. Context Coverage */}
+                {/* 1. Context Coverage (Mathematically Derived from Real Evidence) */}
                 <ContextCoverageWidget
-                  coverage={
-                    latestAnalysis && latestAnalysis.status === 'COMPLETED'
-                      ? {
-                          overallPercentage: Math.min(
-                            100,
-                            Math.round(
-                              ((latestAnalysis.filesAnalyzed || 0) > 0 ? 50 : 0) +
-                                ((latestAnalysis.commitsAnalyzed || 0) > 0 ? 50 : 0)
-                            )
-                          ),
-                          metrics: {
-                            totalFiles: latestAnalysis.filesAnalyzed || 0,
-                            commitsTracked: latestAnalysis.commitsAnalyzed || 0,
-                            relationshipsMapped: latestAnalysis.architectureNodes || 0,
-                            architectureNodes: latestAnalysis.architectureNodes || 0,
-                          },
-                          breakdown: {
-                            codebaseUnderstanding: (latestAnalysis.filesAnalyzed || 0) > 0 ? 80 : 0,
-                            architectureMapping: (latestAnalysis.architectureNodes || 0) > 0 ? 70 : 0,
-                            gitHistory: (latestAnalysis.commitsAnalyzed || 0) > 0 ? 85 : 0,
-                            dependencyMapping: (latestAnalysis.dependenciesDetected || 0) > 0 ? 75 : 0,
-                            documentation: 50,
-                          },
-                        }
-                      : null
-                  }
+                  coverage={projectContext?.coverage || null}
                 />
 
                 {/* Unanalyzed banner if project has no analysis yet */}
@@ -410,7 +453,9 @@ export default function DashboardPage() {
 
                 {/* 3. Central Intelligence Area */}
                 <ProjectIntelligencePanel
+                  projectId={selectedProject.id}
                   hasAnalyzedProject={latestAnalysis && latestAnalysis.status === 'COMPLETED'}
+                  onConnectRepo={() => setShowRepoModal(true)}
                 />
 
                 {/* 4. Two-Column Dashboard Overview Widgets */}
@@ -521,6 +566,7 @@ export default function DashboardPage() {
             {activeView === 'ask' && (
               <div className="animate-in fade-in-50 duration-150">
                 <AskProjectInterface
+                  projectId={selectedProject?.id}
                   hasAnalyzedProject={latestAnalysis && latestAnalysis.status === 'COMPLETED'}
                   hasProject={Boolean(selectedProject)}
                   isAnalyzing={isAnalyzing || selectedProject?.analysisStatus === 'RUNNING'}
