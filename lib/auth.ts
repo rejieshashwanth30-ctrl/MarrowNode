@@ -1,5 +1,6 @@
 import { createClient } from '@/utils/supabase/server';
 import { prisma } from '@/lib/prisma';
+import { ensureMarrowNodeSchema } from '@/lib/db/init';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 
 export class AuthError extends Error {
@@ -49,6 +50,7 @@ export async function requireAuth(): Promise<SupabaseUser> {
  * Self-healing and idempotent.
  */
 export async function getOrCreateCurrentProfile(supabaseUser?: SupabaseUser) {
+  await ensureMarrowNodeSchema();
   const authUser = supabaseUser || (await requireAuth());
 
   const displayName =

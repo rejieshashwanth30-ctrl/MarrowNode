@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser, getOrCreateCurrentProfile } from '@/lib/auth';
+import { ensureMarrowNodeSchema } from '@/lib/db/init';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,6 +9,7 @@ export const dynamic = 'force-dynamic';
  */
 export async function GET() {
   try {
+    await ensureMarrowNodeSchema();
     const user = await getCurrentUser();
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

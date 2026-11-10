@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import { requireAuth, AuthError, getOrCreateCurrentProfile } from '@/lib/auth';
+import { ensureMarrowNodeSchema } from '@/lib/db/init';
 
 export class GitHubApiError extends Error {
   statusCode: number;
@@ -24,6 +25,7 @@ export async function getGitHubTokenForCurrentUser(): Promise<{
   githubUsername: string | null;
   connectionStatus: string;
 }> {
+  await ensureMarrowNodeSchema();
   const supabaseUser = await requireAuth();
 
   let userProfile = await prisma.user.findUnique({

@@ -3,6 +3,7 @@ import { requireAuth, getOrCreateCurrentProfile } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { getGitHubTokenForCurrentUser, fetchRepositoryDetails, GitHubApiError } from '@/lib/github/client';
 import { upsertRepository } from '@/lib/services/repositories';
+import { ensureMarrowNodeSchema } from '@/lib/db/init';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,6 +16,8 @@ export const dynamic = 'force-dynamic';
  */
 export async function POST(request: NextRequest) {
   try {
+    await ensureMarrowNodeSchema();
+
     // 1. Verify user authentication
     await requireAuth();
     const profile = await getOrCreateCurrentProfile();

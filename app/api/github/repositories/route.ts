@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { getGitHubTokenForCurrentUser, fetchUserRepositories, GitHubApiError } from '@/lib/github/client';
+import { ensureMarrowNodeSchema } from '@/lib/db/init';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,6 +14,9 @@ export const dynamic = 'force-dynamic';
  */
 export async function GET(request: NextRequest) {
   try {
+    // 0. Ensure schema exists
+    await ensureMarrowNodeSchema();
+
     // 1. Verify user session
     await requireAuth();
 
