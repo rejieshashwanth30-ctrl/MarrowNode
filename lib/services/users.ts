@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/prisma';
-import { requireAuth, AuthError } from '@/lib/auth';
+import { requireAuth, AuthError, getOrCreateCurrentProfile } from '@/lib/auth';
 
 export interface SyncProfileData {
   supabaseUserId: string;
@@ -9,7 +9,7 @@ export interface SyncProfileData {
 }
 
 /**
- * Upsert MarrowNode profile record based on verified Supabase user ID
+ * Upsert MarrowNode profile record based on verified Supabase user ID in marrownode.users
  */
 export async function syncUserProfile(data: SyncProfileData) {
   return prisma.user.upsert({
@@ -29,11 +29,12 @@ export async function syncUserProfile(data: SyncProfileData) {
 }
 
 /**
- * Get profile for currently authenticated user
+ * Get profile for currently authenticated user from marrownode.users.
+ * Self-healing: creates or updates profile if missing.
  */
 export async function getCurrentUserProfile() {
   const user = await requireAuth();
-  const profile = await prisma.user.findUnique({
+  let profile = await prisma.user.findUnique({
     where: { supabaseUserId: user.id },
     include: {
       githubConnection: true,
@@ -43,11 +44,16 @@ export async function getCurrentUserProfile() {
     },
   });
 
+  if (!profile) {
+    profile = (await getOrCreateCurrentProfile(user)) as any;
+  }
+
   return profile;
 }
 
 /**
  * Save GitHub Connection metadata securely for the authenticated user
+ * Stored in marrownode.github_connections.
  */
 export async function saveGitHubConnection(
   supabaseUserId: string,
@@ -58,9 +64,13 @@ export async function saveGitHubConnection(
     accessToken?: string | null;
   }
 ) {
-  const profile = await prisma.user.findUnique({
+  let profile = await prisma.user.findUnique({
     where: { supabaseUserId },
   });
+
+  if (!profile) {
+    profile = await getOrCreateCurrentProfile();
+  }
 
   if (!profile) {
     throw new AuthError('Profile not found for authenticated user', 404);

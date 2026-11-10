@@ -45,41 +45,37 @@ export async function requireAuth(): Promise<SupabaseUser> {
 
 /**
  * Get or automatically create the MarrowNode Profile linked to the Supabase User.
- * Anchored strictly on supabaseUserId.
+ * Anchored strictly on supabaseUserId in the marrownode.users PostgreSQL table.
+ * Self-healing and idempotent.
  */
 export async function getOrCreateCurrentProfile(supabaseUser?: SupabaseUser) {
   const authUser = supabaseUser || (await requireAuth());
 
+  const displayName =
+    authUser.user_metadata?.full_name ||
+    authUser.user_metadata?.name ||
+    authUser.user_metadata?.user_name ||
+    authUser.user_metadata?.preferred_username ||
+    authUser.email?.split('@')[0] ||
+    'Developer';
+
+  const avatarUrl =
+    authUser.user_metadata?.avatar_url ||
+    authUser.user_metadata?.picture ||
+    null;
+
   const profile = await prisma.user.upsert({
     where: { supabaseUserId: authUser.id },
     update: {
-      email: authUser.email || '',
-      displayName:
-        authUser.user_metadata?.full_name ||
-        authUser.user_metadata?.name ||
-        authUser.user_metadata?.user_name ||
-        authUser.user_metadata?.preferred_username ||
-        authUser.email?.split('@')[0] ||
-        'Developer',
-      avatarUrl:
-        authUser.user_metadata?.avatar_url ||
-        authUser.user_metadata?.picture ||
-        null,
+      displayName,
+      avatarUrl,
+      ...(authUser.email ? { email: authUser.email } : {}),
     },
     create: {
       supabaseUserId: authUser.id,
       email: authUser.email || `${authUser.id}@marrownode.internal`,
-      displayName:
-        authUser.user_metadata?.full_name ||
-        authUser.user_metadata?.name ||
-        authUser.user_metadata?.user_name ||
-        authUser.user_metadata?.preferred_username ||
-        authUser.email?.split('@')[0] ||
-        'Developer',
-      avatarUrl:
-        authUser.user_metadata?.avatar_url ||
-        authUser.user_metadata?.picture ||
-        null,
+      displayName,
+      avatarUrl,
     },
     include: {
       githubConnection: true,
@@ -88,4 +84,3 @@ export async function getOrCreateCurrentProfile(supabaseUser?: SupabaseUser) {
 
   return profile;
 }
-

@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/prisma';
-import { requireAuth, AuthError } from '@/lib/auth';
+import { requireAuth, AuthError, getOrCreateCurrentProfile } from '@/lib/auth';
 
 export class GitHubApiError extends Error {
   statusCode: number;
@@ -26,10 +26,14 @@ export async function getGitHubTokenForCurrentUser(): Promise<{
 }> {
   const supabaseUser = await requireAuth();
 
-  const userProfile = await prisma.user.findUnique({
+  let userProfile = await prisma.user.findUnique({
     where: { supabaseUserId: supabaseUser.id },
     include: { githubConnection: true },
   });
+
+  if (!userProfile) {
+    userProfile = (await getOrCreateCurrentProfile(supabaseUser)) as any;
+  }
 
   if (!userProfile) {
     throw new AuthError('User profile not found in application database', 404);
@@ -274,3 +278,4 @@ export async function fetchRepoFileContent(
     return null;
   }
 }
+

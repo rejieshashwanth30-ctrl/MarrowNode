@@ -2,14 +2,16 @@
 // Connects to Neon PostgreSQL with pooled connection for runtime and direct connection for migrations
 
 generator client {
-  provider      = "prisma-client-js"
-  binaryTargets = ["native", "rhel-openssl-3.0.x"]
+  provider        = "prisma-client-js"
+  previewFeatures = ["multiSchema"]
+  binaryTargets   = ["native", "rhel-openssl-3.0.x"]
 }
 
 datasource db {
   provider  = "postgresql"
   url       = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
+  schemas   = ["marrownode"]
 }
 
 enum AnalysisStatus {
@@ -17,6 +19,8 @@ enum AnalysisStatus {
   RUNNING
   COMPLETED
   FAILED
+
+  @@schema("marrownode")
 }
 
 // -------------------------------------------------------------
@@ -36,6 +40,7 @@ model User {
   projects         Project[]
 
   @@map("users")
+  @@schema("marrownode")
 }
 
 // -------------------------------------------------------------
@@ -55,6 +60,7 @@ model GitHubConnection {
   updatedAt        DateTime @updatedAt
 
   @@map("github_connections")
+  @@schema("marrownode")
 }
 
 // -------------------------------------------------------------
@@ -86,6 +92,7 @@ model Project {
 
   @@index([ownerId])
   @@map("projects")
+  @@schema("marrownode")
 }
 
 // -------------------------------------------------------------
@@ -112,6 +119,7 @@ model Repository {
   updatedAt     DateTime  @updatedAt
 
   @@map("repositories")
+  @@schema("marrownode")
 }
 
 // -------------------------------------------------------------
@@ -136,6 +144,7 @@ model Analysis {
 
   @@index([projectId])
   @@map("analyses")
+  @@schema("marrownode")
 }
 
 // -------------------------------------------------------------
@@ -156,5 +165,5 @@ model Evidence {
 
   @@index([projectId])
   @@map("evidences")
+  @@schema("marrownode")
 }
-

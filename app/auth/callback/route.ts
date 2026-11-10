@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { createClient } from '@/utils/supabase/server';
+import { createServerClient } from '@supabase/ssr';
+import { getSupabaseUrl, getSupabasePublishableKey } from '@/utils/supabase/config';
 import { getOrCreateCurrentProfile } from '@/lib/auth';
 import { saveGitHubConnection } from '@/lib/services/users';
 import { getAppOrigin, sanitizeRedirectPath } from '@/lib/origin';
@@ -11,8 +12,9 @@ export const dynamic = 'force-dynamic';
  * GET /auth/callback
  *
  * Exchanges GitHub OAuth code for a Supabase session, synchronizes the MarrowNode user
- * profile in Neon PostgreSQL, stores GitHub connection metadata, and safely redirects
- * to the internal workstation dashboard.
+ * profile in Neon PostgreSQL (marrownode schema), stores GitHub connection metadata,
+ * ensures all session cookies are attached directly to the redirect response,
+ * and safely redirects to the internal workstation dashboard.
  */
 export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url);
@@ -24,9 +26,10 @@ export async function GET(request: NextRequest) {
   // Dynamically resolve application origin
   const appOrigin = getAppOrigin();
   const safeNext = sanitizeRedirectPath(rawNext, '/dashboard');
+  const finalUrl = `${appOrigin}${safeNext}`;
 
   console.log('[MarrowNode Auth Callback] OAuth callback reached at /auth/callback');
-  console.log('[MarrowNode Auth Callback] Callback origin:', appOrigin);
+  console.log('[MarrowNode Auth Callback] Target destination:', finalUrl);
   console.log('[MarrowNode Auth Callback] Code exists:', Boolean(code));
 
   // 1. Handle OAuth provider errors or user cancellation
@@ -44,7 +47,29 @@ export async function GET(request: NextRequest) {
   // 2. Exchange authorization code for Supabase session
   if (code) {
     try {
-      const supabase = createClient();
+      // Create the redirect response upfront so cookies can be set directly on it
+      const response = NextResponse.redirect(finalUrl);
+
+      const supabaseUrl = getSupabaseUrl();
+      const supabaseKey = getSupabasePublishableKey();
+
+      // Configure Supabase client to write cookies directly to the redirect response
+      const supabase = createServerClient(supabaseUrl, supabaseKey, {
+        cookies: {
+          getAll() {
+            return request.cookies.getAll();
+          },
+          setAll(cookiesToSet) {
+            cookiesToSet.forEach(({ name, value, options }) => {
+              // Set on request for immediate server reads
+              request.cookies.set(name, value);
+              // Set on response for browser persistence
+              response.cookies.set(name, value, options);
+            });
+          },
+        },
+      });
+
       const { data, error } = await supabase.auth.exchangeCodeForSession(code);
 
       if (error) {
@@ -67,7 +92,7 @@ export async function GET(request: NextRequest) {
         try {
           await getOrCreateCurrentProfile(data.user);
 
-          // 4. Save verified GitHub connection metadata
+          // 4. Save verified GitHub connection metadata & token
           const isGitHubProvider =
             data.user.app_metadata?.provider === 'github' ||
             Boolean(data.user.user_metadata?.user_name);
@@ -98,20 +123,14 @@ export async function GET(request: NextRequest) {
             );
           }
         } catch (syncErr: any) {
-          // Log failure safely without exposing DB credentials
           console.error(
             '[MarrowNode Auth Callback] Neon profile sync notice:',
             syncErr instanceof Error ? syncErr.message : 'Unknown'
           );
         }
 
-        // 5. Final internal redirect to verified MarrowNode path
-        const finalUrl = `${appOrigin}${safeNext}`;
-        console.log(
-          '[MarrowNode Auth Callback] Final internal redirect path:',
-          finalUrl
-        );
-        return NextResponse.redirect(finalUrl);
+        // Return the redirect response with all Set-Cookie headers attached
+        return response;
       }
     } catch (err: any) {
       console.error(
@@ -124,8 +143,7 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // 6. Missing code parameter
+  // Missing code parameter
   console.warn('[MarrowNode Auth Callback] Callback reached without code');
   return NextResponse.redirect(`${appOrigin}/auth?error=missing_code`);
 }
-
