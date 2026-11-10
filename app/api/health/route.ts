@@ -7,27 +7,14 @@ import { ensureMarrowNodeSchema } from '@/lib/db/init';
 
 export const dynamic = 'force-dynamic';
 
-function getSafeDatabaseInfo() {
-  const rawUrl =
-    process.env.DATABASE_URL ||
-    process.env.POSTGRES_URL ||
-    process.env.DATABASE_URL_POOLED ||
-    process.env.PRISMA_DATABASE_URL ||
-    '';
-
-  if (!rawUrl) {
-    return { host: 'unknown', database: 'unknown', mode: 'none' };
-  }
-
+function parseSafeHost(rawUrl?: string): { host: string; db: string } {
+  if (!rawUrl) return { host: 'not_set', db: 'not_set' };
   try {
-    const parsed = new URL(rawUrl.replace('postgresql://', 'http://').replace('postgres://', 'http://'));
-    return {
-      host: parsed.hostname || 'unknown',
-      database: parsed.pathname ? parsed.pathname.replace(/^\//, '') : 'unknown',
-      mode: rawUrl.includes('pooler') ? 'pooled' : 'direct',
-    };
+    const fake = rawUrl.replace('postgresql://', 'http://').replace('postgres://', 'http://').replace('prisma+postgres://', 'http://');
+    const u = new URL(fake);
+    return { host: u.hostname, db: u.pathname ? u.pathname.replace(/^\//, '') : 'default' };
   } catch (_) {
-    return { host: 'unparseable', database: 'unknown', mode: 'unknown' };
+    return { host: 'invalid_format', db: 'unknown' };
   }
 }
 
@@ -36,49 +23,27 @@ function getSafeDatabaseInfo() {
  * Safely verifies Supabase Auth, Neon PostgreSQL, marrownode schema, and table presence.
  */
 export async function GET() {
-  // 1. Ensure schema and tables exist
-  await ensureMarrowNodeSchema();
+  const envHosts = {
+    DATABASE_URL: parseSafeHost(process.env.DATABASE_URL),
+    POSTGRES_URL: parseSafeHost(process.env.POSTGRES_URL),
+    DATABASE_URL_POOLED: parseSafeHost(process.env.DATABASE_URL_POOLED),
+    PRISMA_DATABASE_URL: parseSafeHost(process.env.PRISMA_DATABASE_URL),
+    DIRECT_URL: parseSafeHost(process.env.DIRECT_URL),
+  };
 
-  const dbInfo = getSafeDatabaseInfo();
+  // 1. Try to ensure schema and tables exist
+  let schemaInitError: string | null = null;
+  try {
+    await ensureMarrowNodeSchema();
+  } catch (err: any) {
+    schemaInitError = err?.message || 'Init failed';
+  }
 
-  const responseData: {
-    status: 'ok' | 'degraded' | 'error';
-    database: 'connected' | 'disconnected' | 'error';
-    schema: string;
-    databaseInfo: {
-      host: string;
-      database: string;
-      mode: string;
-    };
-    tables: {
-      users: boolean;
-      github_connections: boolean;
-      projects: boolean;
-      repositories: boolean;
-      analyses: boolean;
-      evidences: boolean;
-    };
-    services: {
-      neonPostgres: {
-        connected: boolean;
-        latencyMs: number;
-        error?: string;
-      };
-      supabaseAuth: {
-        reachable: boolean;
-        error?: string;
-      };
-    };
-    diagnostic: {
-      supabaseHost: string;
-      applicationOrigin: string;
-      prismaUserCount: number;
-    };
-  } = {
+  const responseData: any = {
     status: 'ok',
     database: 'connected',
     schema: 'marrownode',
-    databaseInfo: dbInfo,
+    envHosts,
     tables: {
       users: false,
       github_connections: false,
@@ -88,7 +53,7 @@ export async function GET() {
       evidences: false,
     },
     services: {
-      neonPostgres: { connected: false, latencyMs: 0 },
+      neonPostgres: { connected: false, latencyMs: 0, error: schemaInitError || undefined },
       supabaseAuth: { reachable: false },
     },
     diagnostic: {
