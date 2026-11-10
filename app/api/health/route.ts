@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import { prisma, getNormalizedDatabaseUrl } from '@/lib/prisma';
 import { createClient } from '@/utils/supabase/server';
 import { getSupabaseUrl } from '@/utils/supabase/config';
 import { getAppOrigin } from '@/lib/origin';
@@ -23,7 +23,11 @@ function parseSafeHost(rawUrl?: string): { host: string; db: string } {
  * Safely verifies Supabase Auth, Neon PostgreSQL, marrownode schema, and table presence.
  */
 export async function GET() {
+  const activeUrl = getNormalizedDatabaseUrl();
+  const activeHostInfo = parseSafeHost(activeUrl);
+
   const envHosts = {
+    activePrismaHost: activeHostInfo,
     DATABASE_URL: parseSafeHost(process.env.DATABASE_URL),
     POSTGRES_URL: parseSafeHost(process.env.POSTGRES_URL),
     DATABASE_URL_POOLED: parseSafeHost(process.env.DATABASE_URL_POOLED),
