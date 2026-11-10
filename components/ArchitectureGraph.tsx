@@ -15,6 +15,9 @@ interface ArchitectureGraphProps {
   selectedNodeId?: string;
   onSelectNode?: (nodeId: string) => void;
   onSelectFile?: (filePath: string) => void;
+  hasProject?: boolean;
+  isAnalyzing?: boolean;
+  onConnectRepo?: () => void;
 }
 
 export function ArchitectureGraph({
@@ -23,10 +26,39 @@ export function ArchitectureGraph({
   selectedNodeId,
   onSelectNode,
   onSelectFile,
+  hasProject = false,
+  isAnalyzing = false,
+  onConnectRepo,
 }: ArchitectureGraphProps) {
   const [internalSelectedId, setInternalSelectedId] = useState<string>(
     selectedNodeId || nodes[0]?.id || ''
   );
+
+  if (isAnalyzing) {
+    return (
+      <Card className="h-full flex flex-col overflow-hidden font-sans">
+        <CardHeader className="bg-surface-subtle dark:bg-[#1A221D]">
+          <div className="flex items-center gap-2">
+            <Network className="w-4 h-4 text-forest dark:text-[#88B094]" />
+            <CardTitle>Topology Dependency Graph</CardTitle>
+          </div>
+        </CardHeader>
+        <CardContent className="p-8 sm:p-12 flex-1 flex flex-col items-center justify-center text-center space-y-3 min-h-[420px] bg-ivory/40 dark:bg-[#101512]">
+          <div className="w-12 h-12 rounded-full bg-forest/10 border border-forest/20 flex items-center justify-center text-forest dark:text-[#88B094] animate-spin">
+            <Network className="w-6 h-6" />
+          </div>
+          <div className="space-y-1 max-w-sm">
+            <h3 className="text-sm sm:text-base font-semibold text-text-primary dark:text-white">
+              Mapping Architecture Topology…
+            </h3>
+            <p className="text-xs text-text-muted leading-relaxed">
+              Synthesizing module coupling, service boundaries, and dependency relationships from AST files and manifests.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
 
   if (!nodes || nodes.length === 0) {
     return (
@@ -43,19 +75,26 @@ export function ArchitectureGraph({
           </div>
           <div className="space-y-1 max-w-sm">
             <h3 className="text-sm sm:text-base font-semibold text-text-primary dark:text-white">
-              Architecture map unavailable
+              {hasProject ? 'Architecture Map Pending' : 'Architecture map unavailable'}
             </h3>
             <p className="text-xs text-text-muted leading-relaxed">
-              Connect and analyze a repository to generate the architecture map and visualize service boundaries, component graphs, and dependency couplings.
+              {hasProject
+                ? 'Run repository analysis to generate the topology graph and compute module couplings.'
+                : 'Connect and analyze a repository to generate the architecture map and visualize service boundaries, component graphs, and dependency couplings.'}
             </p>
           </div>
-          <div className="pt-2">
-            <Link href="/onboarding">
-              <Button variant="primary" size="sm" className="text-xs font-sans font-medium">
+          {!hasProject && (
+            <div className="pt-2">
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={onConnectRepo}
+                className="text-xs font-sans font-medium"
+              >
                 Connect GitHub Repository
               </Button>
-            </Link>
-          </div>
+            </div>
+          )}
         </CardContent>
       </Card>
     );

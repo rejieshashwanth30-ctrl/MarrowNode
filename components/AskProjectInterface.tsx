@@ -9,14 +9,51 @@ import { Terminal, ShieldCheck, HelpCircle } from 'lucide-react';
 
 interface AskProjectInterfaceProps {
   hasAnalyzedProject?: boolean;
+  hasProject?: boolean;
+  isAnalyzing?: boolean;
   onInspectFile?: (filePath: string) => void;
+  onConnectRepo?: () => void;
 }
 
 export function AskProjectInterface({
   hasAnalyzedProject = false,
+  hasProject = false,
+  isAnalyzing = false,
   onInspectFile,
+  onConnectRepo,
 }: AskProjectInterfaceProps) {
   const [query, setQuery] = useState('');
+
+  if (isAnalyzing) {
+    return (
+      <Card className="h-full flex flex-col overflow-hidden font-sans">
+        <CardHeader className="bg-surface-subtle dark:bg-[#1A221D]">
+          <div className="flex items-center justify-between w-full">
+            <div className="flex items-center gap-2">
+              <Terminal className="w-4 h-4 text-forest dark:text-[#88B094]" />
+              <CardTitle>Ask Your Project</CardTitle>
+            </div>
+            <Badge variant="neutral" size="xs" className="font-sans font-medium">
+              EVIDENCE-ORIENTED
+            </Badge>
+          </div>
+        </CardHeader>
+        <CardContent className="p-8 sm:p-12 flex-1 flex flex-col items-center justify-center text-center space-y-4 min-h-[460px] bg-ivory/40 dark:bg-[#101512]">
+          <div className="w-12 h-12 rounded-full bg-forest/10 border border-forest/20 flex items-center justify-center text-forest dark:text-[#88B094] animate-spin">
+            <Terminal className="w-6 h-6" />
+          </div>
+          <div className="space-y-1.5 max-w-md">
+            <h3 className="text-base sm:text-lg font-bold text-text-primary dark:text-white">
+              Indexing Project Context…
+            </h3>
+            <p className="text-xs sm:text-sm text-text-muted leading-relaxed">
+              MarrowNode is compiling symbol graphs and documentation evidence. The query console will activate as soon as analysis is complete.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
 
   if (!hasAnalyzedProject) {
     return (
@@ -38,20 +75,27 @@ export function AskProjectInterface({
           </div>
           <div className="space-y-1.5 max-w-md">
             <h3 className="text-base sm:text-lg font-bold text-text-primary dark:text-white">
-              Connect a repository to ask questions about your project.
+              {hasProject
+                ? 'Run repository analysis to enable question answering.'
+                : 'Connect a repository to ask questions about your project.'}
             </h3>
             <p className="text-xs sm:text-sm text-text-muted leading-relaxed">
               MarrowNode answers technical architectural questions, dependency bounds, and codebase intent using verified AST parsing and Git history once your repository is indexed.
             </p>
           </div>
 
-          <div className="w-full max-w-sm pt-2">
-            <Link href="/onboarding" className="inline-block w-full">
-              <Button variant="primary" size="md" className="w-full text-xs font-sans font-medium">
+          {!hasProject && (
+            <div className="w-full max-w-sm pt-2">
+              <Button
+                variant="primary"
+                size="md"
+                onClick={onConnectRepo}
+                className="w-full text-xs font-sans font-medium"
+              >
                 Connect GitHub Repository
               </Button>
-            </Link>
-          </div>
+            </div>
+          )}
         </CardContent>
       </Card>
     );

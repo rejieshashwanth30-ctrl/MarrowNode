@@ -40,6 +40,8 @@ export default function DashboardPage() {
   const [user, setUser] = useState<any | null>(null);
   const [projects, setProjects] = useState<any[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [projectContext, setProjectContext] = useState<any | null>(null);
+  const [isLoadingContext, setIsLoadingContext] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
@@ -48,7 +50,22 @@ export default function DashboardPage() {
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [showRepoModal, setShowRepoModal] = useState(false);
 
-  const fetchDashboardData = async () => {
+  const fetchProjectContext = async (projectId: string) => {
+    try {
+      setIsLoadingContext(true);
+      const res = await fetch(`/api/projects/${projectId}/context`);
+      if (res.ok) {
+        const data = await res.json();
+        setProjectContext(data.context);
+      }
+    } catch (err) {
+      console.error('[Dashboard fetch context error]:', err);
+    } finally {
+      setIsLoadingContext(false);
+    }
+  };
+
+  const fetchDashboardData = async (targetProjectId?: string) => {
     try {
       const [userRes, projectsRes] = await Promise.all([
         fetch('/api/user/me'),
@@ -69,8 +86,10 @@ export default function DashboardPage() {
         const projectsData = await projectsRes.json();
         const projs = projectsData.projects || [];
         setProjects(projs);
-        if (projs.length > 0 && !selectedProjectId) {
-          setSelectedProjectId(projs[0].id);
+        const activeId = targetProjectId || selectedProjectId || (projs.length > 0 ? projs[0].id : null);
+        if (activeId) {
+          setSelectedProjectId(activeId);
+          await fetchProjectContext(activeId);
         }
       }
     } catch (err) {
@@ -84,9 +103,14 @@ export default function DashboardPage() {
     fetchDashboardData();
   }, []);
 
+  const handleSelectProject = (projectId: string) => {
+    setSelectedProjectId(projectId);
+    fetchProjectContext(projectId);
+  };
+
   const handleRefresh = async () => {
     setIsRefreshing(true);
-    await fetchDashboardData();
+    await fetchDashboardData(selectedProjectId || undefined);
     setIsRefreshing(false);
   };
 
@@ -106,7 +130,7 @@ export default function DashboardPage() {
       if (!res.ok) {
         setAnalysisError(data.error || 'Repository analysis failed');
       } else {
-        await fetchDashboardData();
+        await fetchDashboardData(id);
       }
     } catch (err: any) {
       setAnalysisError(err?.message || 'Failed to trigger repository analysis');
@@ -117,11 +141,13 @@ export default function DashboardPage() {
 
   const handleRepoConnected = async (newProject: any) => {
     setShowRepoModal(false);
-    await fetchDashboardData();
     if (newProject?.id) {
       setSelectedProjectId(newProject.id);
+      await fetchDashboardData(newProject.id);
       // Automatically trigger deterministic analysis
       handleStartAnalysis(newProject.id);
+    } else {
+      await fetchDashboardData();
     }
   };
 
@@ -457,21 +483,37 @@ export default function DashboardPage() {
             {/* VIEW 2: REPOSITORY EXPLORER */}
             {activeView === 'explorer' && (
               <div className="animate-in fade-in-50 duration-150">
-                <RepositoryExplorer fileTree={[]} />
+                <RepositoryExplorer
+                  fileTree={projectContext?.fileTree || []}
+                  hasProject={Boolean(selectedProject)}
+                  isAnalyzing={isAnalyzing || selectedProject?.analysisStatus === 'RUNNING'}
+                  onConnectRepo={() => setShowRepoModal(true)}
+                />
               </div>
             )}
 
             {/* VIEW 3: ARCHITECTURE */}
             {activeView === 'architecture' && (
               <div className="animate-in fade-in-50 duration-150">
-                <ArchitectureGraph nodes={[]} edges={[]} />
+                <ArchitectureGraph
+                  nodes={projectContext?.nodes || []}
+                  edges={projectContext?.edges || []}
+                  hasProject={Boolean(selectedProject)}
+                  isAnalyzing={isAnalyzing || selectedProject?.analysisStatus === 'RUNNING'}
+                  onConnectRepo={() => setShowRepoModal(true)}
+                />
               </div>
             )}
 
             {/* VIEW 4: TIMELINE */}
             {activeView === 'timeline' && (
               <div className="animate-in fade-in-50 duration-150">
-                <ProjectTimeline events={[]} />
+                <ProjectTimeline
+                  events={projectContext?.timeline || []}
+                  hasProject={Boolean(selectedProject)}
+                  isAnalyzing={isAnalyzing || selectedProject?.analysisStatus === 'RUNNING'}
+                  onConnectRepo={() => setShowRepoModal(true)}
+                />
               </div>
             )}
 
@@ -480,6 +522,9 @@ export default function DashboardPage() {
               <div className="animate-in fade-in-50 duration-150">
                 <AskProjectInterface
                   hasAnalyzedProject={latestAnalysis && latestAnalysis.status === 'COMPLETED'}
+                  hasProject={Boolean(selectedProject)}
+                  isAnalyzing={isAnalyzing || selectedProject?.analysisStatus === 'RUNNING'}
+                  onConnectRepo={() => setShowRepoModal(true)}
                 />
               </div>
             )}
@@ -487,14 +532,26 @@ export default function DashboardPage() {
             {/* VIEW 6: IMPACT ANALYSIS */}
             {activeView === 'impact' && (
               <div className="animate-in fade-in-50 duration-150">
-                <ChangeImpactAnalysis />
+                <ChangeImpactAnalysis
+                  hasAnalyzedProject={latestAnalysis && latestAnalysis.status === 'COMPLETED'}
+                  hasProject={Boolean(selectedProject)}
+                  isAnalyzing={isAnalyzing || selectedProject?.analysisStatus === 'RUNNING'}
+                  modules={projectContext?.modules || []}
+                  fileTree={projectContext?.fileTree || []}
+                  onConnectRepo={() => setShowRepoModal(true)}
+                />
               </div>
             )}
 
             {/* VIEW 7: EVIDENCE EXPLORER */}
             {activeView === 'evidence' && (
               <div className="animate-in fade-in-50 duration-150">
-                <EvidenceExplorer items={[]} />
+                <EvidenceExplorer
+                  items={projectContext?.evidenceItems || []}
+                  hasProject={Boolean(selectedProject)}
+                  isAnalyzing={isAnalyzing || selectedProject?.analysisStatus === 'RUNNING'}
+                  onConnectRepo={() => setShowRepoModal(true)}
+                />
               </div>
             )}
 

@@ -11,6 +11,9 @@ import { Search, ShieldCheck, Database, FileCode, GitCommit, GitPullRequest, Boo
 interface EvidenceExplorerProps {
   items?: EvidenceItem[];
   onSelectEvidence?: (item: EvidenceItem) => void;
+  hasProject?: boolean;
+  isAnalyzing?: boolean;
+  onConnectRepo?: () => void;
 }
 
 const CATEGORIES: (EvidenceCategory | 'All')[] = [
@@ -23,9 +26,41 @@ const CATEGORIES: (EvidenceCategory | 'All')[] = [
   'Architecture relationships',
 ];
 
-export function EvidenceExplorer({ items = [], onSelectEvidence }: EvidenceExplorerProps) {
+export function EvidenceExplorer({
+  items = [],
+  onSelectEvidence,
+  hasProject = false,
+  isAnalyzing = false,
+  onConnectRepo,
+}: EvidenceExplorerProps) {
   const [activeCategory, setActiveCategory] = useState<EvidenceCategory | 'All'>('All');
   const [search, setSearch] = useState('');
+
+  if (isAnalyzing) {
+    return (
+      <Card className="overflow-hidden font-sans">
+        <CardHeader className="bg-surface-subtle dark:bg-[#1A221D]">
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="w-4 h-4 text-forest dark:text-[#88B094]" />
+            <CardTitle>Evidence & Repository Provenance</CardTitle>
+          </div>
+        </CardHeader>
+        <CardContent className="p-8 sm:p-12 flex flex-col items-center justify-center text-center space-y-3 min-h-[380px] bg-ivory/40 dark:bg-[#101512]">
+          <div className="w-12 h-12 rounded-full bg-forest/10 border border-forest/20 flex items-center justify-center text-forest dark:text-[#88B094] animate-spin">
+            <ShieldCheck className="w-6 h-6" />
+          </div>
+          <div className="space-y-1 max-w-sm">
+            <h3 className="text-sm sm:text-base font-semibold text-text-primary dark:text-white">
+              Collecting Project Evidence…
+            </h3>
+            <p className="text-xs text-text-muted leading-relaxed">
+              Extracting cryptographic proof, AST symbols, dependencies, and commit evidence from the repository.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
 
   if (!items || items.length === 0) {
     return (
@@ -42,19 +77,26 @@ export function EvidenceExplorer({ items = [], onSelectEvidence }: EvidenceExplo
           </div>
           <div className="space-y-1 max-w-sm">
             <h3 className="text-sm sm:text-base font-semibold text-text-primary dark:text-white">
-              No evidence available
+              {hasProject ? 'Evidence Collection Pending' : 'No evidence available'}
             </h3>
             <p className="text-xs text-text-muted leading-relaxed">
-              Evidence will appear after project analysis.
+              {hasProject
+                ? 'Run repository analysis to generate verifiable evidence records for files, architecture, and commits.'
+                : 'Evidence will appear after project analysis.'}
             </p>
           </div>
-          <div className="pt-2">
-            <Link href="/onboarding">
-              <Button variant="primary" size="sm" className="text-xs font-sans font-medium">
+          {!hasProject && (
+            <div className="pt-2">
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={onConnectRepo}
+                className="text-xs font-sans font-medium"
+              >
                 Connect GitHub Repository
               </Button>
-            </Link>
-          </div>
+            </div>
+          )}
         </CardContent>
       </Card>
     );

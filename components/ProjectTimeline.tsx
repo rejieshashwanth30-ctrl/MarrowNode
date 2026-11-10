@@ -12,11 +12,46 @@ import { GitCommit, Filter, ChevronDown, ChevronUp } from 'lucide-react';
 interface ProjectTimelineProps {
   events?: TimelineEvent[];
   onSelectFile?: (filePath: string) => void;
+  hasProject?: boolean;
+  isAnalyzing?: boolean;
+  onConnectRepo?: () => void;
 }
 
-export function ProjectTimeline({ events = [], onSelectFile }: ProjectTimelineProps) {
+export function ProjectTimeline({
+  events = [],
+  onSelectFile,
+  hasProject = false,
+  isAnalyzing = false,
+  onConnectRepo,
+}: ProjectTimelineProps) {
   const [filterType, setFilterType] = useState<string>('all');
   const [expandedEvents, setExpandedEvents] = useState<Record<string, boolean>>({});
+
+  if (isAnalyzing) {
+    return (
+      <Card className="overflow-hidden font-sans">
+        <CardHeader className="bg-surface-subtle dark:bg-[#1A221D]">
+          <div className="flex items-center gap-2">
+            <GitCommit className="w-4 h-4 text-copper dark:text-[#E08F6B]" />
+            <CardTitle>Project Git Memory & Timeline</CardTitle>
+          </div>
+        </CardHeader>
+        <CardContent className="p-8 sm:p-12 flex flex-col items-center justify-center text-center space-y-3 min-h-[380px] bg-ivory/40 dark:bg-[#101512]">
+          <div className="w-12 h-12 rounded-full bg-copper/10 border border-copper/20 flex items-center justify-center text-copper dark:text-[#E08F6B] animate-spin">
+            <GitCommit className="w-6 h-6" />
+          </div>
+          <div className="space-y-1 max-w-sm">
+            <h3 className="text-sm sm:text-base font-semibold text-text-primary dark:text-white">
+              Indexing Git Timeline…
+            </h3>
+            <p className="text-xs text-text-muted leading-relaxed">
+              Fetching commit history, author provenance, and chronological milestones from the repository.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
 
   if (!events || events.length === 0) {
     return (
@@ -33,19 +68,26 @@ export function ProjectTimeline({ events = [], onSelectFile }: ProjectTimelinePr
           </div>
           <div className="space-y-1 max-w-sm">
             <h3 className="text-sm sm:text-base font-semibold text-text-primary dark:text-white">
-              No development history yet
+              {hasProject ? 'Git Timeline Pending' : 'No development history yet'}
             </h3>
             <p className="text-xs text-text-muted leading-relaxed">
-              Git history will appear after repository analysis.
+              {hasProject
+                ? 'Run repository analysis from the Overview tab to index commit history and chronological milestones.'
+                : 'Git history will appear after repository analysis.'}
             </p>
           </div>
-          <div className="pt-2">
-            <Link href="/onboarding">
-              <Button variant="primary" size="sm" className="text-xs font-sans font-medium">
+          {!hasProject && (
+            <div className="pt-2">
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={onConnectRepo}
+                className="text-xs font-sans font-medium"
+              >
                 Connect GitHub Repository
               </Button>
-            </Link>
-          </div>
+            </div>
+          )}
         </CardContent>
       </Card>
     );
