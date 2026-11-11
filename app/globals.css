@@ -5,26 +5,74 @@
 @layer base {
   :root {
     --background: #F5F4EF;
+    --background-rgb: 245 244 239;
     --foreground: #171918;
     --surface: #FFFFFF;
+    --surface-rgb: 255 255 255;
+    --surface-subtle: #F8F8F5;
+    --surface-subtle-rgb: 248 248 245;
     --surface-muted: #ECEBE5;
+    --surface-muted-rgb: 236 235 229;
+    --surface-hover: #E8E7E0;
+    --surface-hover-rgb: 232 231 224;
     --border: #D9DAD4;
+    --border-rgb: 217 218 212;
+    --border-subtle: #E6E7E2;
+    --border-subtle-rgb: 230 231 226;
+    --border-strong: #B8B9B1;
+    --border-strong-rgb: 184 185 177;
     --forest: #56735F;
+    --forest-rgb: 86 115 95;
     --copper: #B56B45;
+    --copper-rgb: 181 107 69;
     --text-primary: #171918;
-    --text-muted: #6F746F;
+    --text-primary-rgb: 23 25 24;
+    --text-secondary: #454B46;
+    --text-secondary-rgb: 69 75 70;
+    --text-muted: #5F6560;
+    --text-muted-rgb: 95 101 96;
+    --text-subtle: #707671;
+    --text-subtle-rgb: 112 118 113;
+    --mobile-nav-height: 3.75rem;
   }
 
   .dark {
     --background: #0E1310;
-    --foreground: #F2F3EE;
+    --background-rgb: 14 19 16;
+    --foreground: #F2F4F0;
     --surface: #151C17;
-    --surface-muted: #1F2822;
-    --border: #28352D;
-    --forest: #6A8E75;
-    --copper: #C27750;
-    --text-primary: #F2F3EE;
-    --text-muted: #959D96;
+    --surface-rgb: 21 28 23;
+    --surface-subtle: #1A221D;
+    --surface-subtle-rgb: 26 34 29;
+    --surface-muted: #212B24;
+    --surface-muted-rgb: 33 43 36;
+    --surface-hover: #27342B;
+    --surface-hover-rgb: 39 52 43;
+    --border: #2C3930;
+    --border-rgb: 44 57 48;
+    --border-subtle: #232E27;
+    --border-subtle-rgb: 35 46 39;
+    --border-strong: #425448;
+    --border-strong-rgb: 66 84 72;
+    --forest: #6E947A;
+    --forest-rgb: 110 148 122;
+    --copper: #C97E56;
+    --copper-rgb: 201 126 86;
+    --text-primary: #F2F4F0;
+    --text-primary-rgb: 242 244 240;
+    --text-secondary: #C6CDC7;
+    --text-secondary-rgb: 198 205 199;
+    --text-muted: #A4AEA6;
+    --text-muted-rgb: 164 174 166;
+    --text-subtle: #8F9B91;
+    --text-subtle-rgb: 143 155 145;
+    --mobile-nav-height: 3.75rem;
+  }
+
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
   }
 
   body {
@@ -67,6 +115,18 @@
 @layer utilities {
   .text-balance {
     text-wrap: balance;
+  }
+
+  .overflow-wrap-anywhere {
+    overflow-wrap: anywhere;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
   }
   
   /* Technical grid pattern background (very faint and restrained) */

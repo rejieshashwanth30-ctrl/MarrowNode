@@ -133,8 +133,8 @@ export function ProjectTimeline({
             </p>
           </div>
 
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <Filter className="w-3.5 h-3.5 text-text-muted mr-1 hidden sm:inline" />
+          <div className="flex items-center gap-1.5 flex-wrap max-w-full">
+            <Filter className="w-3.5 h-3.5 text-text-muted mr-1 hidden sm:inline shrink-0" />
             {[
               { id: 'all', label: 'All History' },
               { id: 'milestone', label: 'Important Changes' },
@@ -145,11 +145,12 @@ export function ProjectTimeline({
             ].map((f) => (
               <button
                 key={f.id}
+                type="button"
                 onClick={() => setFilterType(f.id)}
-                className={`text-xs font-sans px-2.5 py-1 rounded border transition-colors ${
+                className={`text-xs font-sans px-2.5 py-1 rounded border transition-colors whitespace-nowrap ${
                   filterType === f.id
                     ? 'bg-charcoal text-white border-charcoal dark:bg-forest dark:border-forest font-medium'
-                    : 'bg-surface text-text-secondary border-border hover:bg-surface-muted dark:bg-[#151C17] dark:border-border-dark dark:text-[#A7AFA9]'
+                    : 'bg-surface text-text-secondary border-border hover:bg-surface-muted dark:bg-[#151C17] dark:border-border-dark dark:text-[#C6CDC7] dark:hover:text-white'
                 }`}
               >
                 {f.label}
@@ -159,8 +160,8 @@ export function ProjectTimeline({
         </div>
       </CardHeader>
 
-      <CardContent className="p-4 sm:p-6">
-        <div className="mb-4 flex items-center gap-2 pb-2 border-b border-border dark:border-border-dark font-sans">
+      <CardContent className="p-3 sm:p-6">
+        <div className="mb-4 flex flex-wrap items-center gap-2 pb-2 border-b border-border dark:border-border-dark font-sans">
           <span className="text-xs font-semibold uppercase tracking-wider text-text-primary dark:text-white px-2 py-0.5 bg-surface-muted rounded dark:bg-[#1A221D]">
             Important Changes &amp; History
           </span>
@@ -169,22 +170,22 @@ export function ProjectTimeline({
           </span>
         </div>
 
-        <div className="relative pl-6 sm:pl-8 space-y-6 before:absolute before:left-2.5 sm:before:left-3 before:top-2 before:bottom-2 before:w-[1.5px] before:bg-border dark:before:bg-border-dark">
+        <div className="relative pl-5 sm:pl-8 space-y-5 sm:space-y-6 before:absolute before:left-2 sm:before:left-3 before:top-2 before:bottom-2 before:w-[1.5px] before:bg-border dark:before:bg-border-dark">
           {filteredEvents.map((ev) => {
             const isExpanded = !!expandedEvents[ev.id];
 
             return (
-              <div key={ev.id} className="relative group font-sans">
+              <div key={ev.id} className="relative group font-sans min-w-0">
                 <div
-                  className={`absolute -left-[23px] sm:-left-[25px] top-1.5 w-3.5 h-3.5 rounded-full border-2 border-surface ${getDotColor(
+                  className={`absolute -left-[20px] sm:-left-[25px] top-1.5 w-3.5 h-3.5 rounded-full border-2 border-surface ${getDotColor(
                     ev.type
                   )} shadow-sm z-10 dark:border-[#151C17]`}
                 />
 
-                <div className="p-4 rounded bg-surface border border-border hover:border-forest/50 transition-colors dark:bg-[#17201B] dark:border-border-dark">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 mb-2">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h4 className="text-sm font-semibold text-text-primary dark:text-white">
+                <div className="p-3.5 sm:p-4 rounded bg-surface border border-border hover:border-forest/50 transition-colors dark:bg-[#17201B] dark:border-border-dark min-w-0">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 mb-2 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap min-w-0">
+                      <h4 className="text-sm font-semibold text-text-primary dark:text-white break-words min-w-0">
                         {ev.title}
                       </h4>
                       <Badge variant="neutral" size="xs" className="uppercase font-sans font-medium">
@@ -192,44 +193,44 @@ export function ProjectTimeline({
                       </Badge>
                     </div>
 
-                    <div className="flex items-center gap-2 text-xs text-text-muted font-sans">
+                    <div className="flex items-center gap-2 text-xs text-text-muted font-sans shrink-0">
                       <span>{ev.date}</span>
                       <span className="text-border-strong">·</span>
-                      <span className="font-mono text-copper font-medium">
+                      <span className="font-mono text-copper dark:text-[#E69E7B] font-medium">
                         #{ev.commitShort}
                       </span>
                     </div>
                   </div>
 
-                  <div className="space-y-2 mb-3">
+                  <div className="space-y-1.5 mb-3 min-w-0">
                     <div className="text-[11px] uppercase tracking-wider text-text-muted font-semibold">
                       What changed
                     </div>
-                    <p className="text-xs sm:text-sm text-text-secondary leading-relaxed dark:text-[#A7AFA9] font-sans">
+                    <p className="text-xs sm:text-sm text-text-secondary leading-relaxed dark:text-[#C6CDC7] font-sans break-words">
                       {ev.explanation || ev.description}
                     </p>
                   </div>
 
-                  <div className="p-3 rounded bg-surface-subtle border border-border/70 text-xs space-y-1.5 dark:bg-[#141A16] dark:border-border-dark">
+                  <div className="p-3 rounded bg-surface-subtle border border-border/70 text-xs space-y-1.5 dark:bg-[#141A16] dark:border-border-dark min-w-0">
                     <div className="text-[11px] uppercase tracking-wider text-text-muted font-semibold">
                       Why it changed
                     </div>
-                    <p className="text-text-primary dark:text-[#E4E6E1] leading-relaxed">
+                    <p className="text-text-primary dark:text-[#EEF2EC] leading-relaxed break-words">
                       {ev.architecturalImpact || 'Not documented in the commit. The commit message does not explain the broader reason for this change.'}
                     </p>
                   </div>
 
-                  <div className="mt-3 pt-2.5 border-t border-border flex items-center justify-between dark:border-border-dark">
+                  <div className="mt-3 pt-2.5 border-t border-border flex flex-wrap items-center justify-between gap-2 dark:border-border-dark">
                     <button
                       type="button"
                       onClick={() => toggleExpand(ev.id)}
-                      className="text-xs text-text-muted hover:text-text-primary flex items-center gap-1 font-sans font-medium dark:hover:text-white"
+                      className="text-xs text-text-secondary hover:text-text-primary dark:text-[#C6CDC7] dark:hover:text-white flex items-center gap-1 font-sans font-medium"
                     >
                       <span>{isExpanded ? 'Hide commit details' : 'See commit details'}</span>
                       {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                     </button>
 
-                    <span className="text-xs text-text-subtle font-sans">
+                    <span className="text-xs text-text-muted font-sans">
                       by {ev.author?.name || 'Developer'}
                       {(ev.filesAffected || ev.filesChanged || []).length > 0
                         ? ` · ${(ev.filesAffected || ev.filesChanged || []).length} files changed`
@@ -238,7 +239,7 @@ export function ProjectTimeline({
                   </div>
 
                   {isExpanded && (
-                    <div className="mt-3 pt-3 border-t border-border space-y-2.5 dark:border-border-dark">
+                    <div className="mt-3 pt-3 border-t border-border space-y-2.5 dark:border-border-dark min-w-0">
                       {(ev.filesAffected || ev.filesChanged || []).length > 0 && (
                         <>
                           <div className="text-[11px] uppercase tracking-wider text-text-muted font-medium">
@@ -262,7 +263,7 @@ export function ProjectTimeline({
                         <summary className="cursor-pointer font-medium hover:text-text-primary dark:hover:text-white select-none text-[11px]">
                           Technical details
                         </summary>
-                        <div className="mt-1.5 p-2 rounded bg-surface dark:bg-[#141A16] border border-border dark:border-border-dark font-mono text-[11px] space-y-0.5">
+                        <div className="mt-1.5 p-2 rounded bg-surface dark:bg-[#141A16] border border-border dark:border-border-dark font-mono text-[11px] space-y-0.5 break-all">
                           <div>Commit SHA: {ev.commitHash}</div>
                           <div>Author: {ev.author?.name} ({ev.author?.handle})</div>
                           {ev.diffStats && (

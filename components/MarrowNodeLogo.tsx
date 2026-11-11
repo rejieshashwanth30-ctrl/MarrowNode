@@ -47,9 +47,8 @@ export function MarrowNodeLogo({
 
   const dims = variant === 'full' ? fullSizes[size] : markSizes[size];
 
-  const src = variant === 'full'
-    ? (isDark ? '/logo-full-dark.png' : '/logo-full.png')
-    : (isDark ? '/logo-mark-dark.png' : '/logo-mark.png');
+  const lightSrc = variant === 'full' ? '/logo-full.png' : '/logo-mark.png';
+  const darkSrc = variant === 'full' ? '/logo-full-dark.png' : '/logo-mark-dark.png';
 
   return (
     <div className={cn('inline-flex items-center gap-2 select-none', className)}>
@@ -57,14 +56,35 @@ export function MarrowNodeLogo({
         style={{ width: dims.width, height: dims.height }}
         className="relative flex items-center justify-center shrink-0"
       >
-        <Image
-          src={src}
-          alt="MarrowNode Logo"
-          width={dims.width}
-          height={dims.height}
-          priority
-          className="object-contain"
-        />
+        {forceTheme ? (
+          <Image
+            src={forceTheme === 'dark' ? darkSrc : lightSrc}
+            alt="MarrowNode Logo"
+            width={dims.width}
+            height={dims.height}
+            priority
+            className="object-contain"
+          />
+        ) : (
+          <>
+            <Image
+              src={lightSrc}
+              alt="MarrowNode Logo"
+              width={dims.width}
+              height={dims.height}
+              priority
+              className="object-contain dark:hidden"
+            />
+            <Image
+              src={darkSrc}
+              alt="MarrowNode Logo"
+              width={dims.width}
+              height={dims.height}
+              priority
+              className="object-contain hidden dark:block"
+            />
+          </>
+        )}
       </div>
       {showTagline && (
         <span className="text-[11px] font-sans font-medium uppercase tracking-wider text-text-muted border-l border-border pl-2.5 ml-1">

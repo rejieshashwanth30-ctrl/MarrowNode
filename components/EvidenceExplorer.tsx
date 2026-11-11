@@ -174,22 +174,24 @@ export function EvidenceExplorer({
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
+              aria-label="Search project evidence"
               placeholder="Search project evidence..."
-              className="w-full h-8 pl-8 pr-3 bg-surface border border-border rounded text-xs font-sans text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-forest dark:bg-[#151C17] dark:border-border-dark dark:text-white"
+              className="w-full h-9 sm:h-8 pl-8 pr-3 bg-surface border border-border rounded text-xs font-sans text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-forest dark:bg-[#1A221D] dark:border-[#324237] dark:text-[#F2F4F0] dark:placeholder:text-[#98A49A]"
             />
           </div>
         </div>
       </CardHeader>
 
-      <div className="px-4 py-2 border-b border-border bg-surface-subtle/50 flex items-center gap-1.5 overflow-x-auto text-xs font-sans dark:bg-[#151C17] dark:border-border-dark">
+      <div className="px-3 sm:px-4 py-2 border-b border-border bg-surface-subtle/50 flex items-center gap-1.5 overflow-x-auto no-scrollbar text-xs font-sans dark:bg-[#151C17] dark:border-border-dark">
         {CATEGORIES.map((cat) => (
           <button
             key={cat.id}
+            type="button"
             onClick={() => setActiveCategory(cat.id)}
-            className={`px-2.5 py-1 rounded whitespace-nowrap transition-colors font-medium ${
+            className={`px-2.5 py-1 rounded whitespace-nowrap shrink-0 transition-colors font-medium ${
               activeCategory === cat.id
                 ? 'bg-charcoal text-white dark:bg-forest'
-                : 'text-text-secondary hover:text-text-primary hover:bg-surface-muted dark:text-[#A7AFA9] dark:hover:bg-[#1F2822]'
+                : 'text-text-secondary hover:text-text-primary hover:bg-surface-muted dark:text-[#C6CDC7] dark:hover:bg-[#1F2822] dark:hover:text-white'
             }`}
           >
             {cat.label}
@@ -208,12 +210,12 @@ export function EvidenceExplorer({
               <div
                 key={item.id}
                 onClick={() => onSelectEvidence?.(item)}
-                className="p-4 hover:bg-surface-subtle/60 transition-colors cursor-pointer space-y-2.5 dark:hover:bg-[#1A221D]/70 font-sans"
+                className="p-3.5 sm:p-4 hover:bg-surface-subtle/60 transition-colors cursor-pointer space-y-2.5 dark:hover:bg-[#1A221D]/70 font-sans min-w-0"
               >
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
-                  <div className="flex items-center gap-2">
-                    {getCategoryIcon(item.type)}
-                    <span className="text-xs font-bold text-text-primary dark:text-white font-sans">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap min-w-0">
+                    <span className="shrink-0">{getCategoryIcon(item.type)}</span>
+                    <span className="text-xs font-bold text-text-primary dark:text-white font-sans break-words">
                       {getFriendlyEvidenceTitle(item.name)}
                     </span>
                     <Badge variant="neutral" size="xs" className="font-sans font-medium">
@@ -221,25 +223,25 @@ export function EvidenceExplorer({
                     </Badge>
                   </div>
 
-                  <span className="text-xs font-mono text-text-muted truncate" title="Where we found this">
+                  <span className="text-xs font-mono text-text-muted break-all min-w-0" title="Where we found this">
                     Where: {item.pathOrIdentifier}
                   </span>
                 </div>
 
-                <div className="text-xs text-text-secondary leading-relaxed font-sans dark:text-[#A7AFA9]">
-                  <span className="font-medium text-text-primary dark:text-[#E4E6E1]">What we found: </span>
+                <div className="text-xs text-text-secondary leading-relaxed font-sans dark:text-[#C6CDC7] break-words">
+                  <span className="font-medium text-text-primary dark:text-[#F2F4F0]">What we found: </span>
                   {item.snippetOrContext}
                 </div>
 
-                <div className="flex items-center justify-between pt-1 text-xs text-text-muted font-sans">
-                  <div className="flex items-center gap-1.5 flex-wrap">
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-xs text-text-muted font-sans">
+                  <div className="flex items-center gap-1.5 flex-wrap min-w-0">
                     {item.relatedModules.length > 0 && (
                       <>
                         <span className="text-[11px] uppercase tracking-wider font-medium">Project areas:</span>
                         {item.relatedModules.map((m) => (
                           <span
                             key={m}
-                            className="px-1.5 py-0.5 rounded bg-surface border border-border text-[11px] font-mono dark:bg-[#151C17] dark:border-border-dark"
+                            className="px-1.5 py-0.5 rounded bg-surface border border-border text-[11px] font-mono text-text-primary dark:bg-[#1C2620] dark:border-[#324237] dark:text-[#E4E8E3]"
                           >
                             {m}
                           </span>
@@ -248,9 +250,9 @@ export function EvidenceExplorer({
                     )}
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-forest dark:text-[#88B094] uppercase tracking-wider bg-forest/10 px-2 py-0.5 rounded border border-forest/20">
-                      <ShieldCheck className="w-3 h-3" />
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-forest dark:text-[#9AC6A7] uppercase tracking-wider bg-forest/10 px-2 py-0.5 rounded border border-forest/20">
+                      <ShieldCheck className="w-3 h-3 shrink-0" />
                       Found in project
                     </span>
                     <span className="text-[11px] text-text-muted font-medium">

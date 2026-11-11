@@ -56,7 +56,7 @@ export function ProjectSettings({ project }: ProjectSettingsProps) {
       </CardHeader>
 
       {/* Tabs */}
-      <div className="px-4 py-2 border-b border-border bg-surface-subtle/50 flex items-center gap-2 overflow-x-auto text-xs font-sans dark:bg-[#151C17] dark:border-border-dark">
+      <div className="px-3 sm:px-4 py-2 border-b border-border bg-surface-subtle/50 flex items-center gap-2 overflow-x-auto no-scrollbar text-xs font-sans dark:bg-[#151C17] dark:border-border-dark">
         {[
           { id: 'general', label: 'General' },
           { id: 'analysis', label: 'Analysis' },
@@ -65,11 +65,12 @@ export function ProjectSettings({ project }: ProjectSettingsProps) {
         ].map((tab) => (
           <button
             key={tab.id}
+            type="button"
             onClick={() => setActiveTab(tab.id as any)}
-            className={`px-3 py-1 rounded transition-colors font-medium ${
+            className={`px-3 py-1 rounded whitespace-nowrap shrink-0 transition-colors font-medium ${
               activeTab === tab.id
                 ? 'bg-charcoal text-white dark:bg-forest'
-                : 'text-text-secondary hover:text-text-primary hover:bg-surface-muted dark:text-[#A7AFA9] dark:hover:bg-[#1F2822]'
+                : 'text-text-secondary hover:text-text-primary hover:bg-surface-muted dark:text-[#C6CDC7] dark:hover:bg-[#1F2822] dark:hover:text-white'
             }`}
           >
             {tab.label}
@@ -77,7 +78,7 @@ export function ProjectSettings({ project }: ProjectSettingsProps) {
         ))}
       </div>
 
-      <CardContent className="p-4 sm:p-6 space-y-6">
+      <CardContent className="p-3.5 sm:p-6 space-y-6">
         {/* Tab 1: General */}
         {activeTab === 'general' && (
           <div className="space-y-4 max-w-xl font-sans">
@@ -89,8 +90,8 @@ export function ProjectSettings({ project }: ProjectSettingsProps) {
                 type="text"
                 value={projectName}
                 onChange={(e) => setProjectName(e.target.value)}
-                placeholder="marrownode-workspace"
-                className="w-full h-9 px-3 bg-surface border border-border rounded text-xs font-sans text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-forest dark:bg-[#151C17] dark:border-border-dark dark:text-white"
+                placeholder="my-project"
+                className="w-full h-9 px-3 bg-surface border border-border rounded text-xs font-sans text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-forest dark:bg-[#1A221D] dark:border-[#324237] dark:text-[#F2F4F0] dark:placeholder:text-[#98A49A]"
               />
             </div>
 
@@ -102,8 +103,8 @@ export function ProjectSettings({ project }: ProjectSettingsProps) {
                 rows={3}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="Software intelligence and project context layer."
-                className="w-full p-3 bg-surface border border-border rounded text-xs font-sans text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-forest dark:bg-[#151C17] dark:border-border-dark dark:text-white"
+                placeholder="Describe what this project does."
+                className="w-full p-3 bg-surface border border-border rounded text-xs font-sans text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-forest dark:bg-[#1A221D] dark:border-[#324237] dark:text-[#F2F4F0] dark:placeholder:text-[#98A49A]"
               />
             </div>
 
@@ -115,7 +116,7 @@ export function ProjectSettings({ project }: ProjectSettingsProps) {
                 type="text"
                 value={branch}
                 onChange={(e) => setBranch(e.target.value)}
-                className="w-full h-9 px-3 bg-surface border border-border rounded text-xs font-sans text-text-primary dark:bg-[#151C17] dark:border-border-dark dark:text-white"
+                className="w-full h-9 px-3 bg-surface border border-border rounded text-xs font-sans text-text-primary dark:bg-[#1A221D] dark:border-[#324237] dark:text-[#F2F4F0]"
               />
             </div>
 
@@ -178,8 +179,8 @@ export function ProjectSettings({ project }: ProjectSettingsProps) {
                   onClick={() => setTheme(m.id as any)}
                   className={`p-3 rounded border text-xs font-sans flex flex-col items-center gap-2 transition-all ${
                     theme === m.id
-                      ? 'bg-surface border-forest text-forest shadow-subtle dark:border-[#88B094] dark:text-[#88B094] font-medium'
-                      : 'bg-surface text-text-muted border-border hover:border-border-strong hover:text-text-primary dark:bg-[#151C17] dark:border-border-dark'
+                      ? 'bg-surface border-forest text-forest shadow-subtle dark:bg-[#1C2720] dark:border-[#9AC6A7] dark:text-[#9AC6A7] font-medium'
+                      : 'bg-surface text-text-secondary border-border hover:border-border-strong hover:text-text-primary dark:bg-[#151C17] dark:border-[#2C3930] dark:text-[#C6CDC7] dark:hover:text-white'
                   }`}
                 >
                   {m.icon}

@@ -86,14 +86,15 @@ export default function LandingPage() {
   return (
     <div className="min-h-screen bg-ivory dark:bg-[#0E1310] text-text-primary selection:bg-forest selection:text-white flex flex-col font-sans scroll-smooth">
       {/* Top Navigation */}
-      <header className="border-b border-border bg-surface/90 backdrop-blur-md sticky top-0 z-40 dark:bg-[#131915]/90 dark:border-border-dark font-sans">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2">
-            <MarrowNodeLogo variant="full" size="md" />
+      <header className="border-b border-border bg-surface/90 backdrop-blur-md sticky top-0 z-40 dark:bg-[#131915]/95 dark:border-border-dark font-sans">
+        <div className="max-w-6xl mx-auto px-3 sm:px-6 h-14 flex items-center justify-between gap-2">
+          <Link href="/" className="flex items-center shrink-0 min-w-0" aria-label="MarrowNode home">
+            <MarrowNodeLogo variant="full" size="sm" className="sm:hidden" />
+            <MarrowNodeLogo variant="full" size="md" className="hidden sm:inline-flex" />
           </Link>
 
           {/* Desktop Navigation Links */}
-          <nav className="hidden md:flex items-center gap-6 text-xs text-text-secondary font-medium dark:text-[#A7AFA9]">
+          <nav className="hidden md:flex items-center gap-6 text-xs text-text-secondary font-medium dark:text-[#C6CDC7]">
             <button
               onClick={() => scrollToSection('about')}
               className="hover:text-text-primary transition-colors dark:hover:text-white"
@@ -115,27 +116,34 @@ export default function LandingPage() {
           </nav>
 
           {/* Action CTAs */}
-          <div className="flex items-center gap-2 sm:gap-3">
+          <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
             <button
               onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
-              className="p-1.5 text-text-muted hover:text-text-primary rounded transition-colors dark:hover:text-white"
-              title="Toggle theme"
+              className="p-2 text-text-muted hover:text-text-primary rounded transition-colors dark:text-[#C6CDC7] dark:hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-forest"
+              title={`Switch to ${resolvedTheme === 'dark' ? 'light' : 'dark'} mode`}
+              aria-label={`Switch to ${resolvedTheme === 'dark' ? 'light' : 'dark'} mode`}
             >
               {resolvedTheme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             </button>
 
-            <Link href="/auth">
-              <Button variant="primary" size="sm" className="font-sans font-medium text-xs">
-                <Github className="w-3.5 h-3.5 mr-1.5" />
-                <span>Continue with GitHub</span>
+            <Link href="/auth" aria-label="Continue with GitHub" className="shrink-0">
+              <Button
+                variant="primary"
+                size="sm"
+                className="font-sans font-medium text-xs whitespace-nowrap h-8 px-2.5 sm:px-3"
+              >
+                <Github className="w-3.5 h-3.5 shrink-0" />
+                <span className="hidden min-[360px]:inline sm:hidden ml-1.5">GitHub</span>
+                <span className="hidden sm:inline ml-1.5">Continue with GitHub</span>
               </Button>
             </Link>
 
             {/* Mobile Hamburger Toggle */}
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="md:hidden p-1.5 text-text-secondary hover:text-text-primary rounded"
-              aria-label="Toggle navigation"
+              className="md:hidden p-1.5 text-text-secondary hover:text-text-primary dark:text-[#C6CDC7] dark:hover:text-white rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-forest"
+              aria-label="Toggle navigation menu"
+              aria-expanded={mobileMenuOpen}
             >
               {mobileMenuOpen ? <CloseIcon className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </button>
@@ -144,29 +152,29 @@ export default function LandingPage() {
 
         {/* Mobile Dropdown Menu */}
         {mobileMenuOpen && (
-          <div className="md:hidden border-t border-border bg-surface px-4 py-3 space-y-2 dark:bg-[#151C17] dark:border-border-dark font-sans text-xs">
+          <div className="md:hidden border-t border-border bg-surface px-4 py-3 space-y-1.5 dark:bg-[#151C17] dark:border-border-dark font-sans text-xs">
             <button
               onClick={() => scrollToSection('about')}
-              className="block w-full text-left py-2 text-text-secondary hover:text-text-primary dark:text-[#A7AFA9] dark:hover:text-white font-medium"
+              className="block w-full text-left py-2 text-text-secondary hover:text-text-primary dark:text-[#C6CDC7] dark:hover:text-white font-medium"
             >
               About
             </button>
             <button
               onClick={() => scrollToSection('features')}
-              className="block w-full text-left py-2 text-text-secondary hover:text-text-primary dark:text-[#A7AFA9] dark:hover:text-white font-medium"
+              className="block w-full text-left py-2 text-text-secondary hover:text-text-primary dark:text-[#C6CDC7] dark:hover:text-white font-medium"
             >
               Features
             </button>
             <button
               onClick={() => scrollToSection('contact')}
-              className="block w-full text-left py-2 text-text-secondary hover:text-text-primary dark:text-[#A7AFA9] dark:hover:text-white font-medium"
+              className="block w-full text-left py-2 text-text-secondary hover:text-text-primary dark:text-[#C6CDC7] dark:hover:text-white font-medium"
             >
               Contact
             </button>
             <div className="pt-2 border-t border-border dark:border-border-dark flex items-center justify-between">
               <Link
                 href="/auth"
-                className="flex items-center gap-2 text-xs text-text-primary dark:text-white font-medium"
+                className="flex items-center gap-2 py-1 text-xs text-text-primary dark:text-white font-medium"
               >
                 <Github className="w-3.5 h-3.5" />
                 <span>Continue with GitHub</span>
@@ -274,17 +282,17 @@ export default function LandingPage() {
       <section className="py-10 sm:py-14 px-4 sm:px-6 bg-ivory/60 dark:bg-[#0E1310] border-b border-border dark:border-border-dark font-sans">
         <div className="max-w-6xl mx-auto space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
+            <div className="min-w-0">
               <span className="text-xs uppercase tracking-wider text-text-muted font-medium block mb-0.5">
                 Interactive Project Preview
               </span>
-              <h2 className="text-base sm:text-lg font-bold tracking-tight text-text-primary dark:text-white font-sans">
+              <h2 className="text-base sm:text-lg font-bold tracking-tight text-text-primary dark:text-white font-sans break-words">
                 marrownode-oss / core-engine
               </h2>
             </div>
 
             {/* Interactive Preview Switcher Tabs */}
-            <div className="flex items-center gap-1.5 p-1 bg-surface border border-border rounded text-xs font-sans dark:bg-[#151C17] dark:border-border-dark self-start sm:self-auto">
+            <div className="flex items-center gap-1.5 p-1 bg-surface border border-border rounded text-xs font-sans dark:bg-[#151C17] dark:border-border-dark w-full sm:w-auto max-w-full overflow-x-auto no-scrollbar">
               {[
                 { id: 'overview', label: 'Project Understanding' },
                 { id: 'intelligence', label: 'Ask MarrowNode' },
@@ -293,10 +301,10 @@ export default function LandingPage() {
                 <button
                   key={t.id}
                   onClick={() => setActivePreviewTab(t.id as any)}
-                  className={`px-3 py-1 rounded transition-colors font-medium ${
+                  className={`px-3 py-1.5 sm:py-1 rounded transition-colors font-medium whitespace-nowrap shrink-0 ${
                     activePreviewTab === t.id
                       ? 'bg-charcoal text-white dark:bg-forest'
-                      : 'text-text-muted hover:text-text-primary dark:hover:text-white'
+                      : 'text-text-secondary hover:text-text-primary dark:text-[#C6CDC7] dark:hover:text-white'
                   }`}
                 >
                   {t.label}
@@ -308,12 +316,12 @@ export default function LandingPage() {
           {/* Interactive Preview Window */}
           <div className="bg-surface border border-border rounded shadow-card overflow-hidden dark:bg-[#151C17] dark:border-border-dark font-sans">
             {/* Window Titlebar */}
-            <div className="h-9 px-4 border-b border-border bg-surface-subtle flex items-center justify-between text-xs text-text-muted dark:bg-[#1A221D] dark:border-border-dark font-sans">
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-border-strong inline-block" />
-                <span className="w-2.5 h-2.5 rounded-full bg-border-strong inline-block" />
-                <span className="w-2.5 h-2.5 rounded-full bg-border-strong inline-block" />
-                <span className="ml-2 font-medium text-text-primary dark:text-white font-sans">
+            <div className="min-h-[36px] py-2 px-3 sm:px-4 border-b border-border bg-surface-subtle flex flex-wrap items-center justify-between gap-2 text-xs text-text-muted dark:bg-[#1A221D] dark:border-border-dark font-sans">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="w-2.5 h-2.5 rounded-full bg-border-strong inline-block shrink-0" />
+                <span className="w-2.5 h-2.5 rounded-full bg-border-strong inline-block shrink-0" />
+                <span className="w-2.5 h-2.5 rounded-full bg-border-strong inline-block shrink-0" />
+                <span className="ml-1 font-medium text-text-primary dark:text-white font-sans break-words min-w-0">
                   MarrowNode — main branch
                 </span>
               </div>
@@ -323,13 +331,13 @@ export default function LandingPage() {
             </div>
 
             {/* Preview Body depending on active preview tab */}
-            <div className="p-4 sm:p-6 bg-ivory/30 dark:bg-[#111713] font-sans">
+            <div className="p-3 sm:p-6 bg-ivory/30 dark:bg-[#111713] font-sans">
               {activePreviewTab === 'overview' && (
                 <div className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="p-4 rounded bg-surface border border-border dark:bg-[#18201B] dark:border-border-dark">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4">
+                    <div className="p-3.5 sm:p-4 rounded bg-surface border border-border dark:bg-[#18201B] dark:border-border-dark">
                       <span className="text-[11px] uppercase tracking-wider text-text-muted font-medium">Project Understanding</span>
-                      <div className="text-3xl font-bold text-text-primary dark:text-white mt-1 font-sans">
+                      <div className="text-2xl sm:text-3xl font-bold text-text-primary dark:text-white mt-1 font-sans">
                         87%
                       </div>
                       <div className="w-full h-1.5 bg-surface-muted rounded-full mt-2.5 overflow-hidden">
@@ -340,9 +348,9 @@ export default function LandingPage() {
                       </span>
                     </div>
 
-                    <div className="p-4 rounded bg-surface border border-border dark:bg-[#18201B] dark:border-border-dark">
+                    <div className="p-3.5 sm:p-4 rounded bg-surface border border-border dark:bg-[#18201B] dark:border-border-dark">
                       <span className="text-[11px] uppercase tracking-wider text-text-muted font-medium">Development History</span>
-                      <div className="text-3xl font-bold text-copper mt-1 font-sans">
+                      <div className="text-2xl sm:text-3xl font-bold text-copper dark:text-[#E69E7B] mt-1 font-sans">
                         91%
                       </div>
                       <div className="w-full h-1.5 bg-surface-muted rounded-full mt-2.5 overflow-hidden">
@@ -353,9 +361,9 @@ export default function LandingPage() {
                       </span>
                     </div>
 
-                    <div className="p-4 rounded bg-surface border border-border dark:bg-[#18201B] dark:border-border-dark">
+                    <div className="p-3.5 sm:p-4 rounded bg-surface border border-border dark:bg-[#18201B] dark:border-border-dark">
                       <span className="text-[11px] uppercase tracking-wider text-text-muted font-medium">Project Structure</span>
-                      <div className="text-3xl font-bold text-forest dark:text-[#88B094] mt-1 font-sans">
+                      <div className="text-2xl sm:text-3xl font-bold text-forest dark:text-[#9AC6A7] mt-1 font-sans">
                         84%
                       </div>
                       <div className="w-full h-1.5 bg-surface-muted rounded-full mt-2.5 overflow-hidden">
@@ -367,34 +375,34 @@ export default function LandingPage() {
                     </div>
                   </div>
 
-                  <div className="p-3 bg-surface border border-border rounded flex items-center justify-between dark:bg-[#18201B] dark:border-border-dark text-xs font-sans">
+                  <div className="p-3 bg-surface border border-border rounded flex flex-wrap items-center justify-between gap-2 dark:bg-[#18201B] dark:border-border-dark text-xs font-sans">
                     <span className="text-text-muted">
                       Recent important change: <strong className="text-text-primary dark:text-white font-medium">Security middleware updated</strong>
                     </span>
-                    <span className="text-copper font-mono">commit #142 (David Ross)</span>
+                    <span className="text-copper dark:text-[#E69E7B] font-mono">commit #142 (David Ross)</span>
                   </div>
                 </div>
               )}
 
               {activePreviewTab === 'intelligence' && (
-                <div className="p-4 rounded bg-surface border border-border space-y-3 dark:bg-[#18201B] dark:border-border-dark font-sans">
-                  <div className="flex items-center justify-between border-b border-border pb-2 dark:border-border-dark">
+                <div className="p-3.5 sm:p-4 rounded bg-surface border border-border space-y-3 dark:bg-[#18201B] dark:border-border-dark font-sans">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-2 dark:border-border-dark">
                     <span className="text-xs sm:text-sm font-semibold text-text-primary dark:text-white font-sans">
                       “How does login and authentication work?”
                     </span>
                     <Badge variant="success" size="xs" className="font-sans font-medium">Confirmed from project</Badge>
                   </div>
 
-                  <p className="text-xs sm:text-sm leading-relaxed text-text-secondary dark:text-[#A7AFA9] font-sans">
+                  <p className="text-xs sm:text-sm leading-relaxed text-text-secondary dark:text-[#C6CDC7] font-sans">
                     Login is handled through the authentication service and session checks. Login requests go through the auth route, and protected pages verify the user session automatically.
                   </p>
 
                   <div className="pt-2 border-t border-border flex flex-wrap gap-2 dark:border-border-dark font-sans items-center">
                     <span className="text-[11px] uppercase tracking-wider text-text-muted font-medium">Found in:</span>
-                    <span className="text-xs font-mono px-2 py-0.5 rounded bg-surface-subtle border border-border dark:bg-[#141A16] dark:border-border-dark">
+                    <span className="text-xs font-mono px-2 py-0.5 rounded bg-surface-subtle border border-border dark:bg-[#141A16] dark:border-border-dark break-all">
                       src/auth/service.ts
                     </span>
-                    <span className="text-xs font-mono px-2 py-0.5 rounded bg-surface-subtle border border-border dark:bg-[#141A16] dark:border-border-dark">
+                    <span className="text-xs font-mono px-2 py-0.5 rounded bg-surface-subtle border border-border dark:bg-[#141A16] dark:border-border-dark break-all">
                       src/middleware.ts
                     </span>
                     <span className="text-xs font-mono px-2 py-0.5 rounded bg-surface-subtle border border-border dark:bg-[#141A16] dark:border-border-dark">
@@ -405,7 +413,7 @@ export default function LandingPage() {
               )}
 
               {activePreviewTab === 'architecture' && (
-                <div className="p-4 rounded bg-surface border border-border space-y-3 dark:bg-[#18201B] dark:border-border-dark font-sans">
+                <div className="p-3.5 sm:p-4 rounded bg-surface border border-border space-y-3 dark:bg-[#18201B] dark:border-border-dark font-sans">
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs font-sans">
                     {['App Routes', 'UI Components', 'Login & Auth', 'API Endpoints', 'Core Logic', 'Database', 'External Services'].map((node, i) => (
                       <div key={i} className="p-2.5 rounded bg-surface-subtle border border-border dark:bg-[#141A16] dark:border-border-dark">
@@ -419,11 +427,11 @@ export default function LandingPage() {
             </div>
 
             {/* Preview Footer Callout */}
-            <div className="p-3 bg-surface-subtle border-t border-border flex items-center justify-between text-xs dark:bg-[#1A221D] dark:border-border-dark font-sans">
+            <div className="p-3 bg-surface-subtle border-t border-border flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs dark:bg-[#1A221D] dark:border-border-dark font-sans">
               <span className="text-text-muted">
                 Clear explanations · Backed by your files &amp; commits · Built for developers &amp; students
               </span>
-              <Link href="/dashboard" className="text-forest hover:underline font-semibold flex items-center gap-1">
+              <Link href="/dashboard" className="text-forest dark:text-[#9AC6A7] hover:underline font-semibold inline-flex items-center gap-1 shrink-0">
                 <span>Open Interactive Dashboard</span>
                 <ArrowRight className="w-3.5 h-3.5" />
               </Link>

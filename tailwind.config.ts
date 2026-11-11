@@ -11,7 +11,7 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        background: "var(--background)",
+        background: "rgb(var(--background-rgb) / <alpha-value>)",
         foreground: "var(--foreground)",
         // Custom MarrowNode Design System Colors
         charcoal: {
@@ -34,10 +34,10 @@ const config: Config = {
           dark: "#ECEBE5",
         },
         surface: {
-          DEFAULT: "#FFFFFF",
-          subtle: "#F8F8F5",
-          muted: "#ECEBE5",
-          hover: "#E8E7E0",
+          DEFAULT: "rgb(var(--surface-rgb) / <alpha-value>)",
+          subtle: "rgb(var(--surface-subtle-rgb) / <alpha-value>)",
+          muted: "rgb(var(--surface-muted-rgb) / <alpha-value>)",
+          hover: "rgb(var(--surface-hover-rgb) / <alpha-value>)",
           dark: "#141A16",
           darkRaised: "#1A221D",
         },
@@ -56,16 +56,16 @@ const config: Config = {
           text: "#7B4428",
         },
         border: {
-          DEFAULT: "#D9DAD4",
-          subtle: "#E6E7E2",
-          strong: "#B8B9B1",
+          DEFAULT: "rgb(var(--border-rgb) / <alpha-value>)",
+          subtle: "rgb(var(--border-subtle-rgb) / <alpha-value>)",
+          strong: "rgb(var(--border-strong-rgb) / <alpha-value>)",
           dark: "#2A362E",
         },
         text: {
-          primary: "#171918",
-          secondary: "#454B46",
-          muted: "#6F746F",
-          subtle: "#8D928E",
+          primary: "rgb(var(--text-primary-rgb) / <alpha-value>)",
+          secondary: "rgb(var(--text-secondary-rgb) / <alpha-value>)",
+          muted: "rgb(var(--text-muted-rgb) / <alpha-value>)",
+          subtle: "rgb(var(--text-subtle-rgb) / <alpha-value>)",
         },
       },
       fontFamily: {

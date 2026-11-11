@@ -47,13 +47,13 @@ export function EvidenceBadge({
       onClick={onClick}
       title={preview || reference || label}
       className={cn(
-        'group inline-flex items-center gap-1.5 px-2 py-1 rounded bg-surface border border-border text-xs font-mono text-text-primary transition-all dark:bg-[#1A221D] dark:border-border-dark dark:text-[#E4E6E1]',
-        onClick && 'cursor-pointer hover:border-forest/50 hover:bg-forest/5',
+        'group inline-flex items-center gap-1.5 px-2 py-1 rounded bg-surface border border-border text-xs font-mono text-text-primary transition-all max-w-full min-w-0 dark:bg-[#1A221D] dark:border-border-dark dark:text-[#E4E8E3]',
+        onClick && 'cursor-pointer hover:border-forest/50 hover:bg-forest/5 dark:hover:bg-[#212C25]',
         className
       )}
     >
       {getIcon()}
-      <span className="font-medium truncate max-w-[200px] sm:max-w-none">{label}</span>
+      <span className="font-medium truncate min-w-0 flex-1">{label}</span>
       {reference && (
         <span className="text-[10px] text-text-muted border-l border-border pl-1.5 ml-0.5 truncate hidden sm:inline">
           {reference}

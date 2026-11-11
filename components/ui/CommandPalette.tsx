@@ -58,12 +58,15 @@ export function CommandPalette({ isOpen, onClose, onSelectAction }: CommandPalet
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
+            aria-label="Search files, commands, or questions"
             placeholder="Type a file path, query, or command..."
-            className="flex-1 bg-transparent text-xs font-sans text-text-primary placeholder:text-text-muted focus:outline-none dark:text-white"
+            className="flex-1 min-w-0 bg-transparent text-sm sm:text-xs font-sans text-text-primary placeholder:text-text-muted dark:placeholder:text-[#98A49A] focus:outline-none dark:text-[#F2F4F0]"
           />
           <button
+            type="button"
             onClick={onClose}
-            className="p-1 text-text-muted hover:text-text-primary rounded dark:hover:text-white"
+            aria-label="Close command palette"
+            className="p-1 text-text-muted hover:text-text-primary rounded dark:text-[#C6CDC7] dark:hover:text-white"
           >
             <X className="w-3.5 h-3.5" />
           </button>

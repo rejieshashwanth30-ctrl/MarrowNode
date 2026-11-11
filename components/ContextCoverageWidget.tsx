@@ -113,17 +113,17 @@ export function ContextCoverageWidget({ coverage }: ContextCoverageWidgetProps) 
   return (
     <Card className="overflow-hidden font-sans">
       <CardHeader className="bg-surface-subtle dark:bg-[#1A221D]">
-        <div className="flex items-center justify-between w-full">
-          <div className="flex items-center gap-2">
-            <ShieldCheck className="w-4 h-4 text-forest dark:text-[#88B094]" />
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 w-full min-w-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <ShieldCheck className="w-4 h-4 text-forest dark:text-[#9AC6A7] shrink-0" />
             <CardTitle>Project Understanding</CardTitle>
           </div>
           <span
             className="text-xs text-text-muted flex items-center gap-1.5 font-sans"
             title="How much of the available project information MarrowNode analyzed"
           >
-            <Info className="w-3.5 h-3.5 text-text-subtle" />
-            How much of this project MarrowNode was able to understand
+            <Info className="w-3.5 h-3.5 text-text-subtle shrink-0" />
+            <span>How much of this project MarrowNode was able to understand</span>
           </span>
         </div>
       </CardHeader>
@@ -189,18 +189,23 @@ export function ContextCoverageWidget({ coverage }: ContextCoverageWidgetProps) 
           {/* Right: Breakdown list with progress bars */}
           <div className="lg:col-span-8 space-y-3.5">
             {breakdownItems.map((item) => (
-              <div key={item.label} className="group" title={item.tooltip}>
-                <div className="flex items-center justify-between text-xs mb-1.5 font-sans">
-                  <div className="flex items-center gap-2">
-                    {item.icon}
-                    <span className="font-medium text-text-primary dark:text-[#E4E6E1]">
-                      {item.label}
-                    </span>
-                    <span className="text-xs text-text-subtle hidden sm:inline">
-                      — {item.detail}
-                    </span>
+              <div key={item.label} className="group min-w-0" title={item.tooltip}>
+                <div className="flex items-start justify-between gap-2 text-xs mb-1.5 font-sans">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="shrink-0">{item.icon}</span>
+                      <span className="font-medium text-text-primary dark:text-[#F2F4F0]">
+                        {item.label}
+                      </span>
+                      <span className="text-xs text-text-muted hidden sm:inline break-words">
+                        — {item.detail}
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-text-muted mt-0.5 pl-5 sm:hidden break-words">
+                      {item.detail}
+                    </div>
                   </div>
-                  <span className="text-xs font-semibold text-text-secondary dark:text-[#A7AFA9]">
+                  <span className="text-xs font-semibold text-text-secondary dark:text-[#C6CDC7] shrink-0">
                     {item.pct}%
                   </span>
                 </div>

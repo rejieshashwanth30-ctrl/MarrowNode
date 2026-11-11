@@ -275,18 +275,18 @@ export function ChangeImpactAnalysis({
             </select>
           </div>
 
-          <div className="space-y-1.5">
+          <div className="space-y-1.5 min-w-0">
             <label className="text-xs font-medium text-text-primary dark:text-white block">
               Type of change
             </label>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               <button
                 type="button"
                 onClick={() => setChangeType('interface')}
-                className={`h-9 px-2 text-xs rounded border transition-colors font-medium ${
+                className={`min-h-[38px] py-1.5 px-2.5 text-xs rounded border transition-colors font-medium text-center leading-tight ${
                   changeType === 'interface'
-                    ? 'border-forest bg-forest/10 text-forest dark:text-[#88B094]'
-                    : 'border-border bg-surface text-text-secondary dark:bg-[#151C17] dark:border-border-dark'
+                    ? 'border-forest bg-forest/15 text-forest dark:border-[#6E947A] dark:text-[#A5D3B3]'
+                    : 'border-border bg-surface text-text-secondary hover:bg-surface-subtle dark:bg-[#1B251E] dark:border-[#324237] dark:text-[#D5DDD7] dark:hover:bg-[#233028]'
                 }`}
               >
                 Changing an interface
@@ -294,10 +294,10 @@ export function ChangeImpactAnalysis({
               <button
                 type="button"
                 onClick={() => setChangeType('refactor')}
-                className={`h-9 px-2 text-xs rounded border transition-colors font-medium ${
+                className={`min-h-[38px] py-1.5 px-2.5 text-xs rounded border transition-colors font-medium text-center leading-tight ${
                   changeType === 'refactor'
-                    ? 'border-forest bg-forest/10 text-forest dark:text-[#88B094]'
-                    : 'border-border bg-surface text-text-secondary dark:bg-[#151C17] dark:border-border-dark'
+                    ? 'border-forest bg-forest/15 text-forest dark:border-[#6E947A] dark:text-[#A5D3B3]'
+                    : 'border-border bg-surface text-text-secondary hover:bg-surface-subtle dark:bg-[#1B251E] dark:border-[#324237] dark:text-[#D5DDD7] dark:hover:bg-[#233028]'
                 }`}
               >
                 Refactoring code
@@ -305,10 +305,10 @@ export function ChangeImpactAnalysis({
               <button
                 type="button"
                 onClick={() => setChangeType('delete')}
-                className={`h-9 px-2 text-xs rounded border transition-colors font-medium ${
+                className={`min-h-[38px] py-1.5 px-2.5 text-xs rounded border transition-colors font-medium text-center leading-tight ${
                   changeType === 'delete'
-                    ? 'border-rose-500 bg-rose-500/10 text-rose-500'
-                    : 'border-border bg-surface text-text-secondary dark:bg-[#151C17] dark:border-border-dark'
+                    ? 'border-rose-500 bg-rose-500/15 text-rose-600 dark:text-rose-300'
+                    : 'border-border bg-surface text-text-secondary hover:bg-surface-subtle dark:bg-[#1B251E] dark:border-[#324237] dark:text-[#D5DDD7] dark:hover:bg-[#233028]'
                 }`}
               >
                 Removing something
@@ -387,10 +387,10 @@ export function ChangeImpactAnalysis({
           {directConsumers.length > 0 ? (
             <div className="border border-border dark:border-border-dark rounded divide-y divide-border dark:divide-border-dark text-xs max-h-60 overflow-y-auto">
               {directConsumers.map((consumer, idx) => (
-                <div key={idx} className="p-3 flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-2 min-w-0">
+                <div key={idx} className="p-3 flex flex-wrap items-center justify-between gap-2 min-w-0">
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
                     <FileCode2 className="w-4 h-4 text-forest shrink-0" />
-                    <span className="font-mono text-text-primary dark:text-white truncate">
+                    <span className="font-mono text-text-primary dark:text-white break-all min-w-0">
                       {consumer.path}:{consumer.line}
                     </span>
                   </div>
@@ -417,14 +417,14 @@ export function ChangeImpactAnalysis({
             </h4>
             <div className="border border-border dark:border-border-dark rounded divide-y divide-border dark:divide-border-dark text-xs max-h-48 overflow-y-auto">
               {transitiveConsumers.slice(0, 10).map((tc, idx) => (
-                <div key={idx} className="p-2.5 flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-2 min-w-0">
+                <div key={idx} className="p-2.5 flex flex-wrap items-center justify-between gap-2 min-w-0">
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
                     <Layers className="w-3.5 h-3.5 text-copper shrink-0" />
-                    <span className="font-mono text-text-primary dark:text-white truncate">
+                    <span className="font-mono text-text-primary dark:text-white break-all min-w-0">
                       {tc.path}
                     </span>
                   </div>
-                  <span className="text-[10px] text-text-muted font-mono shrink-0">
+                  <span className="text-[10px] text-text-muted font-mono shrink-0 break-all">
                     through {tc.via}
                   </span>
                 </div>

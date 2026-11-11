@@ -114,22 +114,25 @@ export function ProjectHeader({
       : 'neutral';
 
   return (
-    <div className="bg-surface border-b border-border px-4 py-3 sm:px-6 sm:py-4 dark:bg-[#151C17] dark:border-border-dark font-sans">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+    <div className="bg-surface border-b border-border px-3.5 py-3 sm:px-6 sm:py-4 dark:bg-[#151C17] dark:border-border-dark font-sans">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 min-w-0">
         {/* Left: Repo title, branch, and status badge */}
-        <div>
-          <div className="flex items-center gap-2.5 flex-wrap">
-            <h1 className="text-base sm:text-lg font-semibold tracking-tight text-text-primary dark:text-white flex items-center gap-2">
-              <span className="text-text-muted font-normal text-sm sm:text-base">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-2.5 flex-wrap min-w-0">
+            <h1
+              title={`${owner} / ${project.name}`}
+              className="text-base sm:text-lg font-semibold tracking-tight text-text-primary dark:text-white flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 min-w-0 break-words"
+            >
+              <span className="text-text-muted font-normal text-sm sm:text-base break-words">
                 {owner} /
               </span>
-              <span>{project.name}</span>
+              <span className="break-words overflow-wrap-anywhere">{project.name}</span>
             </h1>
 
-            <div className="flex items-center gap-1.5">
+            <div className="flex flex-wrap items-center gap-1.5 min-w-0">
               <Badge variant={statusVariant} size="sm" className="gap-1 font-sans font-medium">
                 {isAnalyzing || project.analysisStatus === 'RUNNING' ? (
-                  <Loader2 className="w-3 h-3 animate-spin text-forest dark:text-[#88B094]" />
+                  <Loader2 className="w-3 h-3 animate-spin text-forest dark:text-[#9AC6A7]" />
                 ) : project.analysisStatus === 'COMPLETED' ? (
                   <CheckCircle2 className="w-3 h-3" />
                 ) : project.analysisStatus === 'FAILED' ? (
@@ -163,8 +166,10 @@ export function ProjectHeader({
               )}
 
               <Badge variant="neutral" size="sm" className="gap-1 font-sans font-medium">
-                <GitBranch className="w-3 h-3 text-text-muted" />
-                {project.defaultBranch || 'main'}
+                <GitBranch className="w-3 h-3 text-text-muted shrink-0" />
+                <span className="truncate max-w-[140px] sm:max-w-[200px]">
+                  {project.defaultBranch || 'main'}
+                </span>
               </Badge>
 
               {project.visibility && (
@@ -175,42 +180,42 @@ export function ProjectHeader({
             </div>
           </div>
 
-          <div className="flex items-center gap-3 sm:gap-4 mt-2 text-xs text-text-muted flex-wrap">
+          <div className="flex items-center gap-x-3 gap-y-1.5 sm:gap-4 mt-2 text-xs text-text-muted flex-wrap">
             <span className="inline-flex items-center gap-1.5">
-              <Code2 className="w-3.5 h-3.5 text-text-secondary" />
+              <Code2 className="w-3.5 h-3.5 text-text-secondary shrink-0" />
               <span>Language:</span>
-              <strong className="text-text-primary font-medium dark:text-[#E4E6E1]">
+              <strong className="text-text-primary font-medium dark:text-[#EEF2EC]">
                 {project.primaryLanguage || 'Checking...'}
               </strong>
             </span>
 
             <span className="inline-flex items-center gap-1.5">
-              <Layers className="w-3.5 h-3.5 text-text-secondary" />
+              <Layers className="w-3.5 h-3.5 text-text-secondary shrink-0" />
               <span>Framework:</span>
-              <strong className="text-text-primary font-medium dark:text-[#E4E6E1]">
+              <strong className="text-text-primary font-medium dark:text-[#EEF2EC]">
                 {project.framework || 'Checking...'}
               </strong>
             </span>
 
             {project.database && (
               <span className="inline-flex items-center gap-1.5">
-                <Database className="w-3.5 h-3.5 text-text-secondary" />
+                <Database className="w-3.5 h-3.5 text-text-secondary shrink-0" />
                 <span>Database:</span>
-                <strong className="text-text-primary font-medium dark:text-[#E4E6E1]">
+                <strong className="text-text-primary font-medium dark:text-[#EEF2EC]">
                   {project.database}
                 </strong>
               </span>
             )}
 
-            <span className="inline-flex items-center gap-1.5 text-text-subtle">
-              <Clock className="w-3 h-3" />
+            <span className="inline-flex items-center gap-1.5 text-text-muted">
+              <Clock className="w-3 h-3 shrink-0" />
               <span>{lastAnalyzedText}</span>
             </span>
           </div>
         </div>
 
         {/* Right: Actions */}
-        <div className="flex items-center gap-2 self-start md:self-auto flex-wrap">
+        <div className="flex items-center gap-2 self-start md:self-auto flex-wrap shrink-0">
           {onConnectRepo && (
             <Button
               variant="outline"

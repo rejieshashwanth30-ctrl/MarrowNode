@@ -219,7 +219,7 @@ export default function DashboardPage() {
   const latestAnalysis = selectedProject?.analyses?.[0] || null;
 
   return (
-    <div className="flex h-screen overflow-hidden bg-ivory dark:bg-[#0E1310] text-text-primary font-sans">
+    <div className="flex h-[100dvh] lg:h-screen overflow-hidden bg-ivory dark:bg-[#0E1310] text-text-primary font-sans">
       {/* Desktop Left Sidebar */}
       <div className="hidden lg:block shrink-0 h-full">
         <Sidebar
@@ -229,7 +229,7 @@ export default function DashboardPage() {
         />
       </div>
 
-      {/* Main Workspace Frame */}
+      {/* Main AppShell Frame */}
       <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
         {/* Topbar */}
         <Topbar
@@ -241,8 +241,8 @@ export default function DashboardPage() {
           onSelectProject={handleSelectProject}
         />
 
-        {/* Scrollable Workstation Surface */}
-        <main className="flex-1 overflow-y-auto pb-20 lg:pb-8">
+        {/* Scrollable Content Surface — reserves bottom nav height + safe-area inset */}
+        <main className="flex-1 overflow-y-auto overflow-x-hidden pb-[calc(var(--mobile-nav-height)+env(safe-area-inset-bottom)+1.75rem)] lg:pb-8">
           {/* Project Repository Header */}
           <ProjectHeader
             project={selectedProject}
@@ -256,14 +256,16 @@ export default function DashboardPage() {
 
           {/* Sync status alert */}
           {syncStatusMessage && (
-            <div className="p-3 mx-3.5 sm:mx-6 mt-3 rounded bg-forest/10 border border-forest/20 text-forest dark:text-[#88B094] text-xs flex items-center justify-between font-sans animate-in fade-in-50">
-              <div className="flex items-center gap-2">
+            <div className="p-3 mx-3 sm:mx-6 mt-3 rounded bg-forest/10 border border-forest/20 text-forest dark:text-[#9AC6A7] text-xs flex items-center justify-between gap-2 font-sans animate-in fade-in-50">
+              <div className="flex items-center gap-2 min-w-0">
                 <CheckCircle2 className="w-4 h-4 shrink-0" />
-                <span>{syncStatusMessage}</span>
+                <span className="break-words">{syncStatusMessage}</span>
               </div>
               <button
+                type="button"
+                aria-label="Dismiss notification"
                 onClick={() => setSyncStatusMessage(null)}
-                className="text-text-muted hover:text-text-primary dark:hover:text-white"
+                className="text-text-muted hover:text-text-primary dark:hover:text-white shrink-0"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -272,14 +274,16 @@ export default function DashboardPage() {
 
           {/* Analysis error alert */}
           {analysisError && (
-            <div className="p-3.5 mx-3.5 sm:mx-6 mt-3 rounded bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 text-xs flex items-center justify-between font-sans">
-              <div className="flex items-center gap-2">
+            <div className="p-3.5 mx-3 sm:mx-6 mt-3 rounded bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 text-xs flex items-center justify-between gap-2 font-sans">
+              <div className="flex items-center gap-2 min-w-0">
                 <AlertCircle className="w-4 h-4 shrink-0" />
-                <span>{analysisError}</span>
+                <span className="break-words">{analysisError}</span>
               </div>
               <button
+                type="button"
+                aria-label="Dismiss error"
                 onClick={() => setAnalysisError(null)}
-                className="text-text-muted hover:text-text-primary dark:hover:text-white"
+                className="text-text-muted hover:text-text-primary dark:hover:text-white shrink-0"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -287,7 +291,7 @@ export default function DashboardPage() {
           )}
 
           {/* Main View Surface */}
-          <div className="p-3.5 sm:p-6 max-w-7xl mx-auto space-y-6 font-sans">
+          <div className="p-3 sm:p-5 lg:p-6 max-w-7xl mx-auto space-y-5 sm:space-y-6 font-sans min-w-0">
             {/* If no project is connected yet and on overview */}
             {!selectedProject && activeView === 'overview' ? (
               <div className="space-y-6 animate-in fade-in-50 duration-150">
@@ -474,21 +478,21 @@ export default function DashboardPage() {
                 />
 
                 {/* 4. Two-Column Dashboard Overview Widgets */}
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6">
                   {/* Left: Project Structure Preview */}
-                  <div className="lg:col-span-7">
+                  <div className="lg:col-span-7 min-w-0">
                     <Card className="h-full flex flex-col justify-between font-sans">
                       <CardHeader className="bg-surface-subtle dark:bg-[#1A221D]">
-                        <div className="flex items-center justify-between w-full">
-                          <div className="flex items-center gap-2">
-                            <Network className="w-4 h-4 text-forest dark:text-[#88B094]" />
+                        <div className="flex flex-wrap items-center justify-between gap-2 w-full">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <Network className="w-4 h-4 text-forest dark:text-[#9AC6A7] shrink-0" />
                             <CardTitle>Project Structure</CardTitle>
                           </div>
                           <Button
                             variant="outline"
                             size="sm"
                             onClick={() => setActiveView('architecture')}
-                            className="text-xs font-sans font-medium"
+                            className="text-xs font-sans font-medium shrink-0"
                           >
                             <span>See connections</span>
                             <ArrowRight className="w-3.5 h-3.5 ml-1" />
@@ -496,7 +500,7 @@ export default function DashboardPage() {
                         </div>
                       </CardHeader>
 
-                      <CardContent className="p-6 text-center space-y-2">
+                      <CardContent className="p-4 sm:p-6 text-center space-y-2">
                         <div className="text-xs text-text-muted">
                           {latestAnalysis?.status === 'COMPLETED'
                             ? `Found ${latestAnalysis.architectureNodes || 0} connected areas across your project.`
@@ -507,19 +511,19 @@ export default function DashboardPage() {
                   </div>
 
                   {/* Right: Recent Development History */}
-                  <div className="lg:col-span-5">
+                  <div className="lg:col-span-5 min-w-0">
                     <Card className="h-full flex flex-col justify-between font-sans">
                       <CardHeader className="bg-surface-subtle dark:bg-[#1A221D]">
-                        <div className="flex items-center justify-between w-full">
-                          <div className="flex items-center gap-2">
-                            <GitCommit className="w-4 h-4 text-copper dark:text-[#E08F6B]" />
+                        <div className="flex flex-wrap items-center justify-between gap-2 w-full">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <GitCommit className="w-4 h-4 text-copper dark:text-[#E69E7B] shrink-0" />
                             <CardTitle>Development History</CardTitle>
                           </div>
                           <Button
                             variant="outline"
                             size="sm"
                             onClick={() => setActiveView('timeline')}
-                            className="text-xs font-sans font-medium"
+                            className="text-xs font-sans font-medium shrink-0"
                           >
                             <span>View history</span>
                             <ArrowRight className="w-3.5 h-3.5 ml-1" />
@@ -527,7 +531,7 @@ export default function DashboardPage() {
                         </div>
                       </CardHeader>
 
-                      <CardContent className="p-6 text-center space-y-2">
+                      <CardContent className="p-4 sm:p-6 text-center space-y-2">
                         <div className="text-xs text-text-muted">
                           {latestAnalysis?.status === 'COMPLETED'
                             ? `Reviewed ${latestAnalysis.commitsAnalyzed || 0} recent commits on ${selectedProject.defaultBranch || 'main'}.`

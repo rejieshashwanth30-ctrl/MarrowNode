@@ -22,17 +22,17 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     ref
   ) => {
     const baseStyles =
-      'inline-flex items-center justify-center font-sans font-medium transition-colors select-none rounded focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-forest disabled:opacity-50 disabled:pointer-events-none';
+      'inline-flex items-center justify-center font-sans font-medium transition-colors select-none rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-forest disabled:opacity-60 disabled:pointer-events-none';
 
     const variantStyles = {
       primary:
         'bg-charcoal text-white hover:bg-charcoal/90 border border-charcoal dark:bg-forest dark:border-forest dark:text-white dark:hover:bg-forest/90',
       secondary:
-        'bg-surface text-text-primary border border-border hover:bg-surface-subtle hover:border-border-strong dark:bg-[#1A221D] dark:border-border-dark dark:hover:bg-[#202A24]',
+        'bg-surface text-text-primary border border-border hover:bg-surface-subtle hover:border-border-strong dark:bg-[#1C2620] dark:text-[#F2F4F0] dark:border-[#324137] dark:hover:bg-[#233028] dark:hover:border-[#43574A]',
       outline:
-        'bg-transparent text-text-primary border border-border hover:bg-surface-subtle dark:border-border-dark dark:hover:bg-[#1A221D]',
+        'bg-transparent text-text-primary border border-border hover:bg-surface-subtle dark:text-[#E4E8E3] dark:border-[#324137] dark:hover:bg-[#1C2620]',
       ghost:
-        'bg-transparent text-text-secondary hover:bg-surface-muted hover:text-text-primary dark:hover:bg-[#1A221D]',
+        'bg-transparent text-text-secondary hover:bg-surface-muted hover:text-text-primary dark:text-[#C6CDC7] dark:hover:bg-[#1C2620] dark:hover:text-white',
       copper:
         'bg-copper text-white hover:bg-copper-hover border border-copper',
     };

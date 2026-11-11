@@ -303,27 +303,29 @@ export function RepositorySelector({
           <div className="space-y-3">
             <div className="flex flex-col sm:flex-row gap-2.5">
               {/* Search input */}
-              <div className="relative flex-1">
+              <div className="relative flex-1 min-w-0">
                 <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
                 <input
                   type="text"
                   placeholder="Search repositories…"
+                  aria-label="Search repositories"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  className="w-full h-8 pl-8 pr-3 text-xs font-sans rounded bg-surface border border-border text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-forest dark:bg-[#1A221D] dark:border-border-dark dark:text-white"
+                  className="w-full h-9 sm:h-8 pl-8 pr-3 text-xs font-sans rounded bg-surface border border-border text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-forest dark:bg-[#1A221D] dark:border-[#324237] dark:text-[#F2F4F0] dark:placeholder:text-[#98A49A]"
                 />
               </div>
 
               {/* Filter tabs */}
-              <div className="flex items-center gap-1 p-0.5 rounded bg-surface-subtle border border-border dark:bg-[#1A221D] dark:border-border-dark self-start sm:self-auto text-xs">
+              <div className="flex items-center gap-1 p-0.5 rounded bg-surface-subtle border border-border dark:bg-[#1A221D] dark:border-border-dark self-start sm:self-auto max-w-full overflow-x-auto no-scrollbar text-xs">
                 {(['all', 'owned', 'private', 'forks'] as FilterType[]).map((tab) => (
                   <button
                     key={tab}
+                    type="button"
                     onClick={() => setFilter(tab)}
-                    className={`px-2.5 py-1 rounded capitalize font-medium transition-colors ${
+                    className={`px-2.5 py-1 rounded capitalize font-medium whitespace-nowrap shrink-0 transition-colors ${
                       filter === tab
-                        ? 'bg-surface text-text-primary shadow-subtle dark:bg-[#232D27] dark:text-white'
-                        : 'text-text-muted hover:text-text-primary dark:hover:text-white'
+                        ? 'bg-surface text-text-primary shadow-subtle dark:bg-[#243129] dark:text-white'
+                        : 'text-text-secondary hover:text-text-primary dark:text-[#C6CDC7] dark:hover:text-white'
                     }`}
                   >
                     {tab}
@@ -399,11 +401,11 @@ export function RepositorySelector({
                   <div
                     key={repo.id}
                     onClick={() => setSelectedRepo(repo)}
-                    className="p-3 rounded bg-surface border border-border hover:border-forest hover:bg-forest/[0.02] cursor-pointer transition-all dark:bg-[#17201B] dark:border-border-dark dark:hover:border-forest/40 flex items-center justify-between gap-3 group"
+                    className="p-3 rounded bg-surface border border-border hover:border-forest hover:bg-forest/[0.02] cursor-pointer transition-all dark:bg-[#17201B] dark:border-border-dark dark:hover:border-forest/40 flex flex-wrap sm:flex-nowrap items-center justify-between gap-2.5 sm:gap-3 group min-w-0"
                   >
-                    <div className="min-w-0 space-y-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-xs sm:text-sm font-semibold text-text-primary group-hover:text-forest transition-colors dark:text-white dark:group-hover:text-[#88B094] truncate">
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <div className="flex items-center gap-2 flex-wrap min-w-0">
+                        <span className="text-xs sm:text-sm font-semibold text-text-primary group-hover:text-forest transition-colors dark:text-white dark:group-hover:text-[#9AC6A7] break-all min-w-0">
                           {repo.fullName}
                         </span>
 
@@ -427,12 +429,12 @@ export function RepositorySelector({
                       </div>
 
                       {repo.description && (
-                        <p className="text-xs text-text-muted truncate max-w-md">
+                        <p className="text-xs text-text-muted line-clamp-2 sm:truncate max-w-md">
                           {repo.description}
                         </p>
                       )}
 
-                      <div className="flex items-center gap-3 text-[11px] text-text-muted">
+                      <div className="flex items-center flex-wrap gap-3 text-[11px] text-text-muted">
                         {repo.language && (
                           <span className="flex items-center gap-1">
                             <span className="w-1.5 h-1.5 rounded-full bg-forest" />

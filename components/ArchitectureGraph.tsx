@@ -118,20 +118,20 @@ export function ArchitectureGraph({
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 font-sans">
       {/* Graph Visual Canvas */}
-      <div className="lg:col-span-8">
+      <div className="lg:col-span-8 min-w-0">
         <Card className="h-full flex flex-col overflow-hidden font-sans">
           <CardHeader className="bg-surface-subtle dark:bg-[#1A221D]">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 w-full">
-              <div>
-                <div className="flex items-center gap-2">
-                  <Network className="w-4 h-4 text-forest dark:text-[#88B094]" />
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 w-full min-w-0">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 min-w-0">
+                  <Network className="w-4 h-4 text-forest dark:text-[#9AC6A7] shrink-0" />
                   <CardTitle>How Your Project Is Connected</CardTitle>
                 </div>
                 <p className="text-xs text-text-muted mt-0.5">
                   See how the main parts of your project depend on and communicate with each other.
                 </p>
               </div>
-              <div className="flex items-center gap-3 text-xs font-sans text-text-muted shrink-0">
+              <div className="flex flex-wrap items-center gap-3 text-xs font-sans text-text-muted shrink-0">
                 <span className="flex items-center gap-1.5">
                   <span className="w-3 h-0.5 bg-forest" /> Selected connection
                 </span>
@@ -142,13 +142,12 @@ export function ArchitectureGraph({
             </div>
           </CardHeader>
 
-          <CardContent className="p-3 sm:p-5 flex-1 bg-ivory/40 dark:bg-[#101512] flex flex-col items-center justify-center relative min-h-[460px]">
+          <CardContent className="p-3 sm:p-5 flex-1 bg-ivory/40 dark:bg-[#101512] flex flex-col items-center justify-center relative min-h-[260px] sm:min-h-[400px] lg:min-h-[460px]">
             {/* SVG Diagram Canvas */}
-            <div className="w-full max-w-[720px] aspect-[4/3] relative">
+            <div className="w-full max-w-[720px] aspect-[4/3] relative overflow-hidden">
               <svg
-                viewBox="0 0 760 560"
+                viewBox="-25 -20 810 600"
                 className="w-full h-full select-none"
-                style={{ overflow: 'visible' }}
               >
                 <defs>
                   <marker
@@ -291,13 +290,13 @@ export function ArchitectureGraph({
       </div>
 
       {/* Part Details Inspector Pane */}
-      <div className="lg:col-span-4">
+      <div className="lg:col-span-4 min-w-0">
         {activeNode && (
           <Card className="h-full flex flex-col font-sans">
             <CardHeader className="bg-surface-subtle dark:bg-[#1A221D]">
-              <div className="flex items-center justify-between w-full">
-                <div className="flex items-center gap-2">
-                  <Layers className="w-4 h-4 text-forest dark:text-[#88B094]" />
+              <div className="flex flex-wrap items-center justify-between gap-2 w-full">
+                <div className="flex items-center gap-2 min-w-0">
+                  <Layers className="w-4 h-4 text-forest dark:text-[#9AC6A7] shrink-0" />
                   <CardTitle>Part Details</CardTitle>
                 </div>
                 <Badge variant={activeNode.health === 'stable' ? 'success' : 'forest'} size="xs" className="font-sans font-medium uppercase">
@@ -306,37 +305,37 @@ export function ArchitectureGraph({
               </div>
             </CardHeader>
 
-            <CardContent className="p-4 space-y-4 flex-1 overflow-y-auto max-h-[600px] font-sans">
-              <div>
-                <div className="flex items-baseline justify-between">
-                  <h3 className="text-base font-bold font-sans text-text-primary dark:text-white">
+            <CardContent className="p-3.5 sm:p-4 space-y-4 flex-1 overflow-y-auto max-h-[600px] font-sans min-w-0">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <h3 className="text-base font-bold font-sans text-text-primary dark:text-white break-words">
                     {activeNode.name}
                   </h3>
-                  <span className="text-xs text-text-muted font-sans font-medium">
+                  <span className="text-xs text-text-muted font-sans font-medium shrink-0">
                     {activeNode.type}
                   </span>
                 </div>
-                <p className="text-xs text-text-secondary mt-1.5 leading-relaxed dark:text-[#A7AFA9] font-sans">
+                <p className="text-xs text-text-secondary mt-1.5 leading-relaxed dark:text-[#C6CDC7] font-sans break-words">
                   {activeNode.description}
                 </p>
               </div>
 
               <div className="grid grid-cols-3 gap-2 p-2.5 bg-surface-subtle rounded border border-border dark:bg-[#1A221D] dark:border-border-dark text-center font-sans">
-                <div>
+                <div className="min-w-0">
                   <span className="text-[10px] uppercase tracking-wider text-text-muted block font-medium">Files</span>
-                  <span className="text-xs font-semibold text-text-primary dark:text-[#E4E6E1]">
+                  <span className="text-xs font-semibold text-text-primary dark:text-[#F2F4F0]">
                     {activeNode.filesCount}
                   </span>
                 </div>
-                <div title="Other parts that depend on this part">
+                <div className="min-w-0" title="Other parts that depend on this part">
                   <span className="text-[10px] uppercase tracking-wider text-text-muted block font-medium">Used by</span>
-                  <span className="text-xs font-semibold text-text-primary dark:text-[#E4E6E1]">
+                  <span className="text-xs font-semibold text-text-primary dark:text-[#F2F4F0]">
                     {activeNode.metrics.fanIn} parts
                   </span>
                 </div>
-                <div title="Parts this area depends on">
+                <div className="min-w-0" title="Parts this area depends on">
                   <span className="text-[10px] uppercase tracking-wider text-text-muted block font-medium">Uses</span>
-                  <span className="text-xs font-semibold text-text-primary dark:text-[#E4E6E1]">
+                  <span className="text-xs font-semibold text-text-primary dark:text-[#F2F4F0]">
                     {activeNode.metrics.fanOut} parts
                   </span>
                 </div>
@@ -350,7 +349,7 @@ export function ArchitectureGraph({
               <div className="space-y-3 pt-1 border-t border-border dark:border-border-dark text-xs font-sans">
                 <div>
                   <span className="text-[11px] uppercase tracking-wider text-text-muted block mb-1.5 flex items-center gap-1 font-medium">
-                    <ArrowRight className="w-3.5 h-3.5 text-forest" />
+                    <ArrowRight className="w-3.5 h-3.5 text-forest shrink-0" />
                     This part uses
                   </span>
                   {activeNode.dependencies.length > 0 ? (
@@ -358,11 +357,12 @@ export function ArchitectureGraph({
                       {activeNode.dependencies.map((dep) => (
                         <button
                           key={dep}
+                          type="button"
                           onClick={() => {
                             const tgt = nodes.find((n) => n.name === dep);
                             if (tgt) handleNodeClick(tgt.id);
                           }}
-                          className="px-2 py-0.5 rounded font-sans text-xs bg-surface border border-border hover:border-forest/60 text-text-primary dark:bg-[#151C17] dark:border-border-dark dark:text-[#E4E6E1] font-medium"
+                          className="px-2 py-1 rounded font-sans text-xs bg-surface border border-border hover:border-forest/60 text-text-primary dark:bg-[#1C2620] dark:border-[#324237] dark:text-[#EEF2ED] dark:hover:bg-[#233028] font-medium break-words"
                         >
                           → {dep}
                         </button>
@@ -377,7 +377,7 @@ export function ArchitectureGraph({
 
                 <div>
                   <span className="text-[11px] uppercase tracking-wider text-text-muted block mb-1.5 flex items-center gap-1 font-medium">
-                    <ArrowLeft className="w-3.5 h-3.5 text-copper" />
+                    <ArrowLeft className="w-3.5 h-3.5 text-copper shrink-0" />
                     These parts use it
                   </span>
                   {activeNode.dependents.length > 0 ? (
@@ -385,11 +385,12 @@ export function ArchitectureGraph({
                       {activeNode.dependents.map((dep) => (
                         <button
                           key={dep}
+                          type="button"
                           onClick={() => {
                             const tgt = nodes.find((n) => n.name === dep);
                             if (tgt) handleNodeClick(tgt.id);
                           }}
-                          className="px-2 py-0.5 rounded font-sans text-xs bg-surface border border-border hover:border-copper/60 text-text-primary dark:bg-[#151C17] dark:border-border-dark dark:text-[#E4E6E1] font-medium"
+                          className="px-2 py-1 rounded font-sans text-xs bg-surface border border-border hover:border-copper/60 text-text-primary dark:bg-[#1C2620] dark:border-[#324237] dark:text-[#EEF2ED] dark:hover:bg-[#233028] font-medium break-words"
                         >
                           ← {dep}
                         </button>
