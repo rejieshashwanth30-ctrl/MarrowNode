@@ -274,8 +274,8 @@ export async function executeDeterministicAnalysis(params: {
 
     // 5. Concurrently Fetch Manifest, README, and Compiler Config (Eliminating waterfall)
     const packageJsonPath = foundManifests.find((p) => p === 'package.json') || foundManifests.find((p) => p.endsWith('package.json'));
-    const readmeFile = treeFiles.find((f) => /^readme(\.[a-z]+)?$/i.test(f.path.split('/').pop() || ''));
-    const readmePath = readmeFile?.path || 'README.md';
+    const readmeFile = treeFiles.find((f) => /^readme(\.[a-z0-9]+)?$/i.test(f.path.split('/').pop() || ''));
+    const readmePath = readmeFile?.path || null;
 
     const [pkgContent, readmeContent, tsconfigRaw] = await telemetry.measure(
       'github.batch_manifests',
@@ -284,7 +284,9 @@ export async function executeDeterministicAnalysis(params: {
           packageJsonPath
             ? fetchRepoFileContent(token, owner, repo, packageJsonPath, latestCommitSha || undefined)
             : Promise.resolve(null),
-          fetchRepoFileContent(token, owner, repo, readmePath, latestCommitSha || undefined).catch(() => null),
+          readmeFile
+            ? fetchRepoFileContent(token, owner, repo, readmeFile.path, latestCommitSha || undefined).catch(() => null)
+            : Promise.resolve(null),
           fetchRepoFileContent(token, owner, repo, 'tsconfig.json', latestCommitSha || undefined)
             .catch(() => null)
             .then(async (c) => c || (await fetchRepoFileContent(token, owner, repo, 'jsconfig.json', latestCommitSha || undefined).catch(() => null))),
@@ -490,7 +492,7 @@ export async function executeDeterministicAnalysis(params: {
         description: `${detectedFramework} core workspace (${topLanguage})`,
         filesCount: moduleFileCountMap.get('root') || Math.max(1, Math.round(totalDiscoveredFiles * 0.1)),
         health: 'active',
-        relatedFiles: ['package.json', readmePath].filter(Boolean),
+        relatedFiles: [packageJsonPath, readmeFile?.path].filter((f): f is string => Boolean(f)),
         dependencies: topologyModules.slice(0, 3),
         dependents: [],
         recentChanges: commits.slice(0, 2).map((c) => ({
@@ -689,17 +691,33 @@ export async function executeDeterministicAnalysis(params: {
           const timelineEvents = commits.map((c, idx) => {
             const commitDate = c.commit.author?.date ? new Date(c.commit.author.date) : new Date();
             const shortSha = c.sha.substring(0, 7);
-            const msg = c.commit.message.split('\n')[0];
+            const msgLines = c.commit.message.split('\n');
+            const msg = msgLines[0];
+            const extendedBody = msgLines.slice(1).join('\n').trim();
             const authorName = c.commit.author?.name || 'Developer';
+
+            // Deterministic classification based on commit content & message keywords
+            const lowerMsg = msg.toLowerCase();
+            let eventType: 'milestone' | 'security' | 'database' | 'refactor' | 'feature' = 'feature';
+            if (/\b(init|initial|release|v\d+\.\d+|breaking|major)\b/.test(lowerMsg)) {
+              eventType = 'milestone';
+            } else if (/\b(auth|security|protect|oauth|jwt|session|token|permission)\b/.test(lowerMsg)) {
+              eventType = 'security';
+            } else if (/\b(schema|prisma|migration|database|postgres|sql|db)\b/.test(lowerMsg)) {
+              eventType = 'database';
+            } else if (/\b(refactor|clean|reorganize|structure|chore)\b/.test(lowerMsg)) {
+              eventType = 'refactor';
+            }
 
             return {
               id: `ev-${shortSha}`,
               date: commitDate.toISOString().split('T')[0],
               year: commitDate.getFullYear(),
               month: commitDate.toLocaleString('default', { month: 'short' }),
-              type: idx === 0 ? 'milestone' : idx % 2 === 0 ? 'feature' : 'refactor',
+              type: eventType,
               title: msg,
-              explanation: `Commit ${shortSha} by ${authorName}: ${msg}`,
+              explanation: `Observed change in commit ${shortSha} by ${authorName}: ${msg}`,
+              architecturalImpact: extendedBody ? `Commit body documentation: ${extendedBody}` : undefined,
               commitHash: c.sha,
               commitShort: shortSha,
               author: {
@@ -736,20 +754,20 @@ export async function executeDeterministicAnalysis(params: {
           evidenceCreatedCount++;
         }
 
-        // Evidence 5: Documentation Context
-        if (hasReadme) {
+        // Evidence 5: Documentation Context (Only if real documentation exists in GitHub)
+        if (hasReadme && readmeFile?.path) {
           await prisma.evidence.create({
             data: {
               projectId,
               type: 'documentation',
-              title: `Project Documentation (${readmePath})`,
-              path: readmePath,
+              title: `Project Documentation (${readmeFile.path})`,
+              path: readmeFile.path,
               metadata: {
                 preview: readmePreview,
                 hasReadme: true,
                 provenance: createFileProvenance({
                   repository: `${owner}/${repo}`,
-                  path: readmePath,
+                  path: readmeFile.path,
                   commitSha: latestCommitSha || undefined,
                   analysisId,
                 }),

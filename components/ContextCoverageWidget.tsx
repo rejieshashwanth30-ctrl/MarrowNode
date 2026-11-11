@@ -68,7 +68,11 @@ export function ContextCoverageWidget({ coverage }: ContextCoverageWidgetProps) 
       label: 'Architecture Mapping',
       pct: hasCoverage ? archPct : 0,
       detail: hasCoverage
-        ? `${archMapped} / ${archDetected} modules mapped${archModulesList ? ` [${archModulesList}]` : ''} (${archUnresolved} unlinked)`
+        ? `${archMapped} / ${archDetected} modules mapped${archModulesList ? ` [${archModulesList}]` : ''}${
+            archUnresolved > 0
+              ? ` (${archUnresolved} unlinked: standalone tooling/assets without incoming imports)`
+              : ''
+          }`
         : 'Pending analysis',
       icon: <CheckCircle2 className="w-3.5 h-3.5 text-forest" />,
     },

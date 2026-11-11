@@ -1,3 +1,10 @@
+export const BLAST_THRESHOLDS = {
+  isolated: 0,
+  lowMax: 3,
+  moderateMax: 8,
+  highMax: 15,
+} as const;
+
 export interface DependencyEdge {
   id: string;
   source: string; // The file importing (consumer)
@@ -191,33 +198,39 @@ export class DependencyGraphEngine {
       cycle.some((node) => this.matchesTarget(node, target))
     );
 
-    // 4. Honest Blast Rating Calculation
+    // 4. Mathematical Blast Rating Calculation
     const directCount = directConsumers.length;
     const transitiveCount = transitiveConsumers.length;
     const totalAffected = directCount + transitiveCount;
 
-    let blastRating: 'CRITICAL' | 'HIGH' | 'MODERATE' | 'LOW' | 'ISOLATED' = 'LOW';
+    let blastRating: 'CRITICAL' | 'HIGH' | 'MODERATE' | 'LOW' | 'ISOLATED' = 'ISOLATED';
 
-    if (changeType === 'delete') {
-      blastRating = directCount > 0 ? 'CRITICAL' : 'ISOLATED';
+    // Zero downstream consumers is strictly ISOLATED under all circumstances
+    if (totalAffected === 0) {
+      blastRating = 'ISOLATED';
+    } else if (changeType === 'delete') {
+      blastRating = totalAffected > BLAST_THRESHOLDS.moderateMax ? 'CRITICAL' : 'HIGH';
     } else if (changeType === 'interface') {
-      if (targetCycles.length > 0 || totalAffected >= 8 || isCoreSubsystem) {
-        blastRating = totalAffected > 12 ? 'CRITICAL' : 'HIGH';
-      } else if (totalAffected >= 3) {
+      if (targetCycles.length > 0 || totalAffected > BLAST_THRESHOLDS.highMax) {
+        blastRating = 'CRITICAL';
+      } else if (
+        totalAffected > BLAST_THRESHOLDS.moderateMax ||
+        (isCoreSubsystem && totalAffected > BLAST_THRESHOLDS.lowMax)
+      ) {
+        blastRating = 'HIGH';
+      } else if (totalAffected > BLAST_THRESHOLDS.lowMax || isCoreSubsystem) {
         blastRating = 'MODERATE';
-      } else if (totalAffected >= 1) {
-        blastRating = 'LOW';
       } else {
-        blastRating = 'ISOLATED';
+        blastRating = 'LOW';
       }
     } else {
       // 'refactor'
-      if (totalAffected >= 10) {
+      if (totalAffected > BLAST_THRESHOLDS.highMax) {
+        blastRating = 'HIGH';
+      } else if (totalAffected > BLAST_THRESHOLDS.moderateMax) {
         blastRating = 'MODERATE';
-      } else if (totalAffected >= 1) {
-        blastRating = 'LOW';
       } else {
-        blastRating = 'ISOLATED';
+        blastRating = 'LOW';
       }
     }
 

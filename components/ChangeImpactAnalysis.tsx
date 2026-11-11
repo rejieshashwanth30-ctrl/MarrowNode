@@ -385,8 +385,10 @@ export function ChangeImpactAnalysis({
               ))}
             </div>
           ) : (
-            <div className="p-4 rounded border border-border dark:border-border-dark bg-surface-subtle dark:bg-[#1A221D] text-center text-xs text-text-muted">
-              No direct consumers import this target. Changes here will not break other modules directly.
+            <div className="p-4 rounded border border-border dark:border-border-dark bg-surface-subtle dark:bg-[#1A221D] text-center text-xs text-text-muted space-y-1">
+              <div className="font-semibold text-text-primary dark:text-white">ISOLATED SUBSYSTEM</div>
+              <p>No downstream consumers were found in the analyzed static dependency graph.</p>
+              <p className="text-[11px] text-text-subtle">Note: this reflects static AST import relationships and does not prove dynamic runtime independence.</p>
             </div>
           )}
         </div>

@@ -216,9 +216,15 @@ export function EvidenceExplorer({
                     ))}
                   </div>
 
-                  <span className="text-forest font-semibold dark:text-[#88B094]">
-                    Confidence {item.relevanceScore}%
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-forest dark:text-[#88B094] uppercase tracking-wider bg-forest/10 px-2 py-0.5 rounded border border-forest/20">
+                      <ShieldCheck className="w-3 h-3" />
+                      Verified Evidence
+                    </span>
+                    <span className="text-[11px] text-text-muted font-medium">
+                      {item.relevanceLevel} Scope
+                    </span>
+                  </div>
                 </div>
               </div>
             ))

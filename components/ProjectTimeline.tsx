@@ -132,6 +132,7 @@ export function ProjectTimeline({
             <Filter className="w-3.5 h-3.5 text-text-muted mr-1 hidden sm:inline" />
             {[
               { id: 'all', label: 'All History' },
+              { id: 'milestone', label: 'Milestones' },
               { id: 'security', label: 'Security' },
               { id: 'database', label: 'Database' },
               { id: 'feature', label: 'Feature' },
@@ -156,10 +157,10 @@ export function ProjectTimeline({
       <CardContent className="p-4 sm:p-6">
         <div className="mb-4 flex items-center gap-2 pb-2 border-b border-border dark:border-border-dark font-sans">
           <span className="text-xs font-semibold uppercase tracking-wider text-text-primary dark:text-white px-2 py-0.5 bg-surface-muted rounded dark:bg-[#1A221D]">
-            Repository Milestones
+            Tracked Evolution
           </span>
           <span className="text-xs text-text-muted">
-            {filteredEvents.length} tracked architectural evolutions
+            {filteredEvents.length} tracked commit records
           </span>
         </div>
 
@@ -199,16 +200,14 @@ export function ProjectTimeline({
                     {ev.explanation || ev.description}
                   </p>
 
-                  {(ev.architecturalImpact || ev.explanation) && (
-                    <div className="p-3 rounded bg-surface-subtle border border-border/70 text-xs space-y-1.5 dark:bg-[#141A16] dark:border-border-dark">
-                      <div className="text-[11px] uppercase tracking-wider text-text-muted font-semibold">
-                        Architectural Intent & Impact
-                      </div>
-                      <p className="text-text-primary dark:text-[#E4E6E1] leading-relaxed">
-                        {ev.architecturalImpact || ev.explanation}
-                      </p>
+                  <div className="p-3 rounded bg-surface-subtle border border-border/70 text-xs space-y-1.5 dark:bg-[#141A16] dark:border-border-dark">
+                    <div className="text-[11px] uppercase tracking-wider text-text-muted font-semibold">
+                      Observed Change & Derived Impact
                     </div>
-                  )}
+                    <p className="text-text-primary dark:text-[#E4E6E1] leading-relaxed">
+                      {ev.architecturalImpact || 'UNKNOWN: Architectural motivation not documented in Git commit log.'}
+                    </p>
+                  </div>
 
                   <div className="mt-3 pt-2.5 border-t border-border flex items-center justify-between dark:border-border-dark">
                     <button

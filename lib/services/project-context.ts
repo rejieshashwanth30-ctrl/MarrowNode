@@ -310,14 +310,27 @@ export async function getProjectWorkstationContext(
       } else if (Array.isArray(meta.recentCommits)) {
         timeline = meta.recentCommits.map((c: any, idx: number) => {
           const commitDate = c.date ? new Date(c.date) : new Date();
+          const lowerMsg = (c.message || '').toLowerCase();
+          let eventType: 'milestone' | 'security' | 'database' | 'refactor' | 'feature' = 'feature';
+          if (/\b(init|initial|release|v\d+\.\d+|breaking|major)\b/.test(lowerMsg)) {
+            eventType = 'milestone';
+          } else if (/\b(auth|security|protect|oauth|jwt|session|token|permission)\b/.test(lowerMsg)) {
+            eventType = 'security';
+          } else if (/\b(schema|prisma|migration|database|postgres|sql|db)\b/.test(lowerMsg)) {
+            eventType = 'database';
+          } else if (/\b(refactor|clean|reorganize|structure|chore)\b/.test(lowerMsg)) {
+            eventType = 'refactor';
+          }
+
           return {
             id: `commit-${c.sha || idx}`,
             date: commitDate.toISOString().split('T')[0],
             year: commitDate.getFullYear(),
             month: commitDate.toLocaleString('default', { month: 'short' }),
-            type: idx === 0 ? 'milestone' : 'feature',
+            type: eventType,
             title: c.message || `Commit ${c.sha}`,
-            explanation: `Commit ${c.sha} authored by ${c.author}`,
+            explanation: `Observed change in commit ${c.sha} by ${c.author || 'Developer'}`,
+            architecturalImpact: undefined,
             commitHash: c.sha || 'unknown',
             commitShort: (c.sha || 'unknown').substring(0, 7),
             author: {
@@ -392,7 +405,7 @@ export async function getProjectWorkstationContext(
         description: `${frameworkName} root workspace application`,
         filesCount: Math.max(1, Math.round(totalFilesCount * 0.2)),
         health: 'active',
-        relatedFiles: ['package.json', 'README.md'],
+        relatedFiles: ['package.json', hasReadme ? 'README.md' : null].filter(Boolean) as string[],
         dependencies: modules.slice(0, 3),
         dependents: [],
         recentChanges: timeline.slice(0, 2).map((t) => ({
