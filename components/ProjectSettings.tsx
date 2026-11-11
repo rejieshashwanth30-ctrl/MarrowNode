@@ -135,14 +135,14 @@ export function ProjectSettings({ project }: ProjectSettingsProps) {
         {activeTab === 'analysis' && (
           <div className="space-y-4 max-w-xl text-xs font-sans text-text-secondary dark:text-[#A7AFA9]">
             <p>
-              MarrowNode statically indexes source files, AST symbol tables, and commit history into Neon PostgreSQL to preserve codebase context.
+              MarrowNode analyzes your project files, how they connect, and your recent commit history so you can explore your codebase clearly.
             </p>
             <div className="p-3 bg-surface-subtle border border-border rounded space-y-2 dark:bg-[#151C17] dark:border-border-dark">
-              <div className="font-semibold text-text-primary dark:text-white">Analysis Pipeline</div>
+              <div className="font-semibold text-text-primary dark:text-white">How MarrowNode analyzes your project</div>
               <ul className="list-disc pl-4 space-y-1 text-xs">
-                <li>Deterministic AST export mapping</li>
-                <li>Git blame and commit intent indexing</li>
-                <li>Zero AI hallucinations; evidence-backed only</li>
+                <li>Reads code files and finds how they connect to each other</li>
+                <li>Reviews recent Git commits to track what changed over time</li>
+                <li>Grounds every answer in real files, commits, and packages</li>
               </ul>
             </div>
           </div>

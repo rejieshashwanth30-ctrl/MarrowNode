@@ -85,7 +85,7 @@ function AuthContent() {
           <CardHeader className="bg-surface-subtle dark:bg-[#1A221D] p-3.5 text-center border-b border-border dark:border-border-dark">
             <div className="w-full text-center">
               <span className="text-xs font-semibold text-text-primary dark:text-white uppercase tracking-wider font-sans">
-                Sign in to Workstation
+                Sign in to MarrowNode
               </span>
             </div>
           </CardHeader>

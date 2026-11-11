@@ -45,59 +45,67 @@ export function ContextCoverageWidget({ coverage }: ContextCoverageWidgetProps) 
   const gitPct = coverage?.git?.coveragePercent ?? (commitsDiscovered > 0 ? Math.round((commitsIndexed / commitsDiscovered) * 100) : 0);
 
   const docFilesDetected = coverage?.documentation?.filesDetected ?? (coverage?.documentation?.hasReadme ? 1 : 0);
-  const docTypesList = coverage?.documentation?.docTypes?.join(', ') || (coverage?.documentation?.hasReadme ? 'README' : 'No docs detected');
+  const docTypesList = coverage?.documentation?.docTypes?.join(', ') || (coverage?.documentation?.hasReadme ? 'README' : 'None found');
 
   const breakdownItems = [
     {
-      label: 'Source Analysis Coverage',
+      label: 'Files analyzed',
+      tooltip: 'How many source code files MarrowNode could read and analyze.',
       pct: hasCoverage ? filesPct : 0,
       detail: hasCoverage
-        ? `${filesParsed} / ${filesSource} files (${filesDiscovered} discovered, ${filesIgnored} ignored, ${filesFailed} failed)`
-        : 'Pending analysis',
+        ? `${filesParsed} of ${filesSource} source files analyzed${filesFailed > 0 ? ` (${filesFailed} could not be read)` : ''}`
+        : 'Waiting for analysis',
       icon: <FileCode2 className="w-3.5 h-3.5 text-forest" />,
     },
     {
-      label: 'Import Resolution',
+      label: 'File connections',
+      tooltip: 'Shows how files in the project connect to one another based on imports.',
       pct: hasCoverage ? importsPct : 0,
       detail: hasCoverage
-        ? `${importsResolved} internal, ${importsExternal} external (${importsUnresolved} unresolved of ${importsTotal} total)`
-        : 'Pending analysis',
+        ? `${importsResolved + importsExternal} connections found${importsUnresolved > 0 ? `, ${importsUnresolved} could not be confirmed` : ''}`
+        : 'Waiting for analysis',
       icon: <Network className="w-3.5 h-3.5 text-forest" />,
     },
     {
-      label: 'Architecture Mapping',
+      label: 'Project structure',
+      tooltip: 'Shows how the major folders and code areas are organized.',
       pct: hasCoverage ? archPct : 0,
       detail: hasCoverage
-        ? `${archMapped} / ${archDetected} modules mapped${archModulesList ? ` [${archModulesList}]` : ''}${
+        ? `${archMapped} of ${archDetected} project areas understood${archModulesList ? ` (${archModulesList})` : ''}${
             archUnresolved > 0
-              ? ` (${archUnresolved} unlinked: standalone tooling/assets without incoming imports)`
+              ? ` · ${archUnresolved} standalone folders without incoming imports`
               : ''
           }`
-        : 'Pending analysis',
+        : 'Waiting for analysis',
       icon: <CheckCircle2 className="w-3.5 h-3.5 text-forest" />,
     },
     {
-      label: 'Dependency Resolution',
+      label: 'Packages understood',
+      tooltip: 'Shows which external packages MarrowNode could identify from your project files.',
       pct: hasCoverage ? depsPct : 0,
       detail: hasCoverage
-        ? `${depsResolved} / ${depsDeclared} declared packages resolved (${manifestsParsed} / ${manifestsDetected} manifests parsed)`
-        : 'Pending analysis',
+        ? `${depsResolved} of ${depsDeclared} packages understood (${manifestsParsed} package list${manifestsParsed === 1 ? '' : 's'} checked)`
+        : 'Waiting for analysis',
       icon: <Layers className="w-3.5 h-3.5 text-forest" />,
     },
     {
-      label: 'Git History Scope',
+      label: 'Development history',
+      tooltip: 'Shows how the project changed over time.',
       pct: hasCoverage ? gitPct : 0,
       detail: hasCoverage
-        ? `${commitsIndexed} / ${commitsDiscovered} commits indexed (${gitHistoryScope})`
-        : 'Pending analysis',
+        ? `${commitsIndexed} recent commits analyzed${commitsDiscovered > commitsIndexed ? ` (of ${commitsDiscovered})` : ''}`
+        : 'Waiting for analysis',
       icon: <GitCommit className="w-3.5 h-3.5 text-copper" />,
     },
     {
-      label: 'Documentation Detected',
+      label: 'Project documentation',
+      tooltip: 'Checks whether README or documentation files exist in the project.',
       pct: hasCoverage ? (docFilesDetected > 0 ? 100 : 0) : 0,
       detail: hasCoverage
-        ? `${docFilesDetected} files detected (${docTypesList})`
-        : 'Pending analysis',
+        ? docFilesDetected > 0
+          ? `${docFilesDetected} documentation file${docFilesDetected === 1 ? '' : 's'} found (${docTypesList})`
+          : 'No documentation files found'
+        : 'Waiting for analysis',
       icon: <BookOpen className="w-3.5 h-3.5 text-text-muted" />,
     },
   ];
@@ -108,11 +116,14 @@ export function ContextCoverageWidget({ coverage }: ContextCoverageWidgetProps) 
         <div className="flex items-center justify-between w-full">
           <div className="flex items-center gap-2">
             <ShieldCheck className="w-4 h-4 text-forest dark:text-[#88B094]" />
-            <CardTitle>Repository Context Coverage</CardTitle>
+            <CardTitle>Project Understanding</CardTitle>
           </div>
-          <span className="text-xs text-text-muted flex items-center gap-1.5 font-sans">
+          <span
+            className="text-xs text-text-muted flex items-center gap-1.5 font-sans"
+            title="How much of the available project information MarrowNode analyzed"
+          >
             <Info className="w-3.5 h-3.5 text-text-subtle" />
-            Deterministic AST & commit trace scope
+            How much of this project MarrowNode was able to understand
           </span>
         </div>
       </CardHeader>
@@ -126,46 +137,50 @@ export function ContextCoverageWidget({ coverage }: ContextCoverageWidgetProps) 
                 {hasCoverage ? overallPercent : 0}%
               </span>
               <span className="text-xs uppercase tracking-wider text-forest font-semibold dark:text-[#88B094] font-sans">
-                {hasCoverage ? 'Indexed Scope' : 'Not Indexed'}
+                {hasCoverage ? 'Analysis coverage' : 'Not analyzed'}
               </span>
             </div>
 
             <p className="text-xs text-text-muted mt-2 leading-relaxed font-sans">
               {hasCoverage ? (
                 <>
-                  Verified deterministic understanding across{' '}
                   <strong className="font-semibold text-text-primary dark:text-white">
-                    {filesParsed} of {filesSource} source files
+                    {overallPercent}% of the available project information
                   </strong>{' '}
-                  ({filesPct}%) with{' '}
+                  was analyzed across{' '}
                   <strong className="font-semibold text-text-primary dark:text-white">
-                    {importsPct}% import resolution
-                  </strong>{' '}
-                  along{' '}
+                    {filesParsed} of {filesSource} code files
+                  </strong>
+                  ,{' '}
+                  <strong className="font-semibold text-text-primary dark:text-white">
+                    {importsPct}% of file connections
+                  </strong>
+                  , and{' '}
                   <strong className="font-semibold text-text-primary dark:text-white">
                     {commitsIndexed} commits
-                  </strong>.
+                  </strong>
+                  .
                 </>
               ) : (
-                'Analysis not available yet. Connect a repository and run analysis to generate project intelligence.'
+                'Analysis not available yet. Connect a GitHub repository and run analysis to understand your project.'
               )}
             </p>
 
             <div className="grid grid-cols-2 gap-3 mt-4 pt-4 border-t border-border dark:border-border-dark text-xs text-text-secondary font-sans">
               <div>
                 <span className="text-text-muted block text-[11px] uppercase tracking-wider">
-                  Imports Resolved
+                  File Connections
                 </span>
                 <span className="font-semibold text-text-primary dark:text-[#E4E6E1] text-xs sm:text-sm">
-                  {hasCoverage ? `${importsResolved} internal` : '—'}
+                  {hasCoverage ? `${importsResolved + importsExternal} found` : '—'}
                 </span>
               </div>
               <div>
                 <span className="text-text-muted block text-[11px] uppercase tracking-wider">
-                  Unresolved Imports
+                  Unconfirmed
                 </span>
                 <span className="font-semibold text-text-primary dark:text-[#E4E6E1] text-xs sm:text-sm">
-                  {hasCoverage ? `${importsUnresolved} unlinked` : '—'}
+                  {hasCoverage ? `${importsUnresolved} connections` : '—'}
                 </span>
               </div>
             </div>
@@ -174,7 +189,7 @@ export function ContextCoverageWidget({ coverage }: ContextCoverageWidgetProps) 
           {/* Right: Breakdown list with progress bars */}
           <div className="lg:col-span-8 space-y-3.5">
             {breakdownItems.map((item) => (
-              <div key={item.label} className="group">
+              <div key={item.label} className="group" title={item.tooltip}>
                 <div className="flex items-center justify-between text-xs mb-1.5 font-sans">
                   <div className="flex items-center gap-2">
                     {item.icon}
@@ -199,6 +214,19 @@ export function ContextCoverageWidget({ coverage }: ContextCoverageWidgetProps) 
                 </div>
               </div>
             ))}
+
+            {hasCoverage && (
+              <details className="pt-2 text-xs text-text-muted border-t border-border/60 dark:border-border-dark">
+                <summary className="cursor-pointer font-medium hover:text-text-primary dark:hover:text-white select-none">
+                  Technical details
+                </summary>
+                <div className="mt-2 p-2.5 rounded bg-surface-subtle dark:bg-[#141A16] font-mono text-[11px] space-y-1">
+                  <div>Source files: {filesParsed}/{filesSource} AST parsed ({filesDiscovered} total, {filesIgnored} ignored, {filesFailed} failed)</div>
+                  <div>Import resolution: {importsResolved} internal, {importsExternal} external, {importsUnresolved} unresolved ({importsTotal} total)</div>
+                  <div>Architecture nodes: {archMapped}/{archDetected} mapped ({archUnresolved} unlinked) · Git scope: {gitHistoryScope}</div>
+                </div>
+              </details>
+            )}
           </div>
         </div>
       </CardContent>

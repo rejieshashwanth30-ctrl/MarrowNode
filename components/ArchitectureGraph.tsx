@@ -40,7 +40,7 @@ export function ArchitectureGraph({
         <CardHeader className="bg-surface-subtle dark:bg-[#1A221D]">
           <div className="flex items-center gap-2">
             <Network className="w-4 h-4 text-forest dark:text-[#88B094]" />
-            <CardTitle>Topology Dependency Graph</CardTitle>
+            <CardTitle>How Your Project Is Connected</CardTitle>
           </div>
         </CardHeader>
         <CardContent className="p-8 sm:p-12 flex-1 flex flex-col items-center justify-center text-center space-y-3 min-h-[420px] bg-ivory/40 dark:bg-[#101512]">
@@ -49,10 +49,10 @@ export function ArchitectureGraph({
           </div>
           <div className="space-y-1 max-w-sm">
             <h3 className="text-sm sm:text-base font-semibold text-text-primary dark:text-white">
-              Mapping Architecture Topology…
+              Mapping project structure…
             </h3>
             <p className="text-xs text-text-muted leading-relaxed">
-              Synthesizing module coupling, service boundaries, and dependency relationships from AST files and manifests.
+              Finding how the main parts and folders in your project connect to each other.
             </p>
           </div>
         </CardContent>
@@ -66,7 +66,7 @@ export function ArchitectureGraph({
         <CardHeader className="bg-surface-subtle dark:bg-[#1A221D]">
           <div className="flex items-center gap-2">
             <Network className="w-4 h-4 text-forest dark:text-[#88B094]" />
-            <CardTitle>Topology Dependency Graph</CardTitle>
+            <CardTitle>How Your Project Is Connected</CardTitle>
           </div>
         </CardHeader>
         <CardContent className="p-8 sm:p-12 flex-1 flex flex-col items-center justify-center text-center space-y-3 min-h-[420px] bg-ivory/40 dark:bg-[#101512]">
@@ -75,12 +75,12 @@ export function ArchitectureGraph({
           </div>
           <div className="space-y-1 max-w-sm">
             <h3 className="text-sm sm:text-base font-semibold text-text-primary dark:text-white">
-              {hasProject ? 'Architecture Map Pending' : 'Architecture map unavailable'}
+              {hasProject ? 'Project structure not mapped yet' : 'Project structure unavailable'}
             </h3>
             <p className="text-xs text-text-muted leading-relaxed">
               {hasProject
-                ? 'Run repository analysis to generate the topology graph and compute module couplings.'
-                : 'Connect and analyze a repository to generate the architecture map and visualize service boundaries, component graphs, and dependency couplings.'}
+                ? 'Run analysis from Overview to see how the main parts of your project depend on each other.'
+                : 'Connect and analyze a GitHub repository to see how the main folders and parts of your project connect.'}
             </p>
           </div>
           {!hasProject && (
@@ -91,7 +91,7 @@ export function ArchitectureGraph({
                 onClick={onConnectRepo}
                 className="text-xs font-sans font-medium"
               >
-                Connect GitHub Repository
+                Choose repository
               </Button>
             </div>
           )}
@@ -121,17 +121,22 @@ export function ArchitectureGraph({
       <div className="lg:col-span-8">
         <Card className="h-full flex flex-col overflow-hidden font-sans">
           <CardHeader className="bg-surface-subtle dark:bg-[#1A221D]">
-            <div className="flex items-center justify-between w-full">
-              <div className="flex items-center gap-2">
-                <Network className="w-4 h-4 text-forest dark:text-[#88B094]" />
-                <CardTitle>Topology Dependency Graph</CardTitle>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 w-full">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Network className="w-4 h-4 text-forest dark:text-[#88B094]" />
+                  <CardTitle>How Your Project Is Connected</CardTitle>
+                </div>
+                <p className="text-xs text-text-muted mt-0.5">
+                  See how the main parts of your project depend on and communicate with each other.
+                </p>
               </div>
-              <div className="flex items-center gap-2 text-xs font-sans text-text-muted">
+              <div className="flex items-center gap-3 text-xs font-sans text-text-muted shrink-0">
                 <span className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-0.5 bg-forest" /> Active Edge
+                  <span className="w-3 h-0.5 bg-forest" /> Selected connection
                 </span>
-                <span className="flex items-center gap-1.5 ml-2">
-                  <span className="w-2.5 h-0.5 bg-border" /> Neutral Edge
+                <span className="flex items-center gap-1.5">
+                  <span className="w-3 h-0.5 bg-border" /> Connection
                 </span>
               </div>
             </div>
@@ -267,7 +272,7 @@ export function ArchitectureGraph({
                         textAnchor="middle"
                         className="text-[10px] font-sans fill-text-subtle select-none"
                       >
-                        {node.filesCount} files · {node.metrics.loc} LOC
+                        {node.filesCount} files
                       </text>
                     </g>
                   );
@@ -275,14 +280,17 @@ export function ArchitectureGraph({
               </svg>
             </div>
 
-            <div className="w-full text-center mt-2 text-xs font-sans text-text-muted">
-              Select any architecture node to inspect dependencies, downstream dependents, and related source files.
+            <div className="w-full text-center mt-2 space-y-1 text-xs font-sans text-text-muted">
+              <div>Click any project part to see what it uses, what depends on it, and its related files.</div>
+              <div className="text-[11px] text-text-subtle">
+                Solid line = direct connection · Dashed line = indirect connection
+              </div>
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Node Inspector Details Pane */}
+      {/* Part Details Inspector Pane */}
       <div className="lg:col-span-4">
         {activeNode && (
           <Card className="h-full flex flex-col font-sans">
@@ -290,7 +298,7 @@ export function ArchitectureGraph({
               <div className="flex items-center justify-between w-full">
                 <div className="flex items-center gap-2">
                   <Layers className="w-4 h-4 text-forest dark:text-[#88B094]" />
-                  <CardTitle>Node Inspector</CardTitle>
+                  <CardTitle>Part Details</CardTitle>
                 </div>
                 <Badge variant={activeNode.health === 'stable' ? 'success' : 'forest'} size="xs" className="font-sans font-medium uppercase">
                   {activeNode.health}
@@ -320,25 +328,30 @@ export function ArchitectureGraph({
                     {activeNode.filesCount}
                   </span>
                 </div>
-                <div>
-                  <span className="text-[10px] uppercase tracking-wider text-text-muted block font-medium">Fan-In</span>
+                <div title="Other parts that depend on this part">
+                  <span className="text-[10px] uppercase tracking-wider text-text-muted block font-medium">Used by</span>
                   <span className="text-xs font-semibold text-text-primary dark:text-[#E4E6E1]">
-                    {activeNode.metrics.fanIn}
+                    {activeNode.metrics.fanIn} parts
                   </span>
                 </div>
-                <div>
-                  <span className="text-[10px] uppercase tracking-wider text-text-muted block font-medium">Fan-Out</span>
+                <div title="Parts this area depends on">
+                  <span className="text-[10px] uppercase tracking-wider text-text-muted block font-medium">Uses</span>
                   <span className="text-xs font-semibold text-text-primary dark:text-[#E4E6E1]">
-                    {activeNode.metrics.fanOut}
+                    {activeNode.metrics.fanOut} parts
                   </span>
                 </div>
+              </div>
+
+              <div className="text-[11px] text-text-muted leading-snug space-y-0.5">
+                <div><strong>Used by</strong> = other parts that depend on this part.</div>
+                <div><strong>Uses</strong> = parts this area depends on.</div>
               </div>
 
               <div className="space-y-3 pt-1 border-t border-border dark:border-border-dark text-xs font-sans">
                 <div>
                   <span className="text-[11px] uppercase tracking-wider text-text-muted block mb-1.5 flex items-center gap-1 font-medium">
                     <ArrowRight className="w-3.5 h-3.5 text-forest" />
-                    Direct Dependencies (Outbound)
+                    This part uses
                   </span>
                   {activeNode.dependencies.length > 0 ? (
                     <div className="flex flex-wrap gap-1.5">
@@ -357,7 +370,7 @@ export function ArchitectureGraph({
                     </div>
                   ) : (
                     <span className="text-text-muted text-xs italic font-sans">
-                      None (leaf persistence or primitive layer)
+                      None (this part does not depend on other project areas)
                     </span>
                   )}
                 </div>
@@ -365,7 +378,7 @@ export function ArchitectureGraph({
                 <div>
                   <span className="text-[11px] uppercase tracking-wider text-text-muted block mb-1.5 flex items-center gap-1 font-medium">
                     <ArrowLeft className="w-3.5 h-3.5 text-copper" />
-                    Dependents (Inbound Consumers)
+                    These parts use it
                   </span>
                   {activeNode.dependents.length > 0 ? (
                     <div className="flex flex-wrap gap-1.5">
@@ -384,7 +397,7 @@ export function ArchitectureGraph({
                     </div>
                   ) : (
                     <span className="text-text-muted text-xs italic font-sans">
-                      None (root entrypoint layer)
+                      None (no other parts directly import this)
                     </span>
                   )}
                 </div>
@@ -394,7 +407,7 @@ export function ArchitectureGraph({
                 <div className="pt-2 border-t border-border dark:border-border-dark font-sans">
                   <span className="text-[11px] uppercase tracking-wider text-text-muted block mb-2 flex items-center gap-1 font-medium">
                     <FileCode className="w-3.5 h-3.5 text-forest" />
-                    Related Source Modules
+                    Related files
                   </span>
                   <div className="space-y-1.5">
                     {activeNode.relatedFiles.map((file) => (
@@ -409,6 +422,17 @@ export function ArchitectureGraph({
                   </div>
                 </div>
               )}
+
+              <details className="pt-2 border-t border-border dark:border-border-dark text-xs text-text-muted">
+                <summary className="cursor-pointer font-medium hover:text-text-primary dark:hover:text-white select-none text-[11px]">
+                  Technical details
+                </summary>
+                <div className="mt-1.5 p-2.5 rounded bg-surface-subtle dark:bg-[#141A16] font-mono text-[11px] space-y-0.5">
+                  <div>Node ID: {activeNode.id}</div>
+                  <div>Fan-In (inbound): {activeNode.metrics.fanIn} · Fan-Out (outbound): {activeNode.metrics.fanOut}</div>
+                  <div>Estimated size: {activeNode.metrics.loc} lines across {activeNode.filesCount} files</div>
+                </div>
+              </details>
             </CardContent>
           </Card>
         )}

@@ -125,7 +125,7 @@ export function Topbar({
           className="flex items-center gap-2 h-8 px-2.5 sm:px-3 bg-surface-subtle border border-border rounded text-xs font-sans text-text-muted hover:border-border-strong hover:text-text-primary transition-all dark:bg-[#18201B] dark:border-border-dark dark:hover:text-white"
         >
           <Search className="w-3.5 h-3.5" />
-          <span className="hidden sm:inline">Search codebase, AST symbols, commits…</span>
+          <span className="hidden sm:inline">Search files, code, commits…</span>
           <span className="sm:hidden">Search…</span>
           <kbd className="hidden sm:inline-flex items-center gap-0.5 text-[10px] px-1 py-0.5 bg-surface border border-border rounded text-text-muted font-mono dark:bg-[#131915] dark:border-border-dark">
             ⌘K

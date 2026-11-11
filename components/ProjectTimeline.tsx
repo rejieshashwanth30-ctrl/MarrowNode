@@ -33,7 +33,7 @@ export function ProjectTimeline({
         <CardHeader className="bg-surface-subtle dark:bg-[#1A221D]">
           <div className="flex items-center gap-2">
             <GitCommit className="w-4 h-4 text-copper dark:text-[#E08F6B]" />
-            <CardTitle>Project Git Memory & Timeline</CardTitle>
+            <CardTitle>Project History</CardTitle>
           </div>
         </CardHeader>
         <CardContent className="p-8 sm:p-12 flex flex-col items-center justify-center text-center space-y-3 min-h-[380px] bg-ivory/40 dark:bg-[#101512]">
@@ -42,10 +42,10 @@ export function ProjectTimeline({
           </div>
           <div className="space-y-1 max-w-sm">
             <h3 className="text-sm sm:text-base font-semibold text-text-primary dark:text-white">
-              Indexing Git Timeline…
+              Reading project history…
             </h3>
             <p className="text-xs text-text-muted leading-relaxed">
-              Fetching commit history, author provenance, and chronological milestones from the repository.
+              Loading recent commits and changes from your project.
             </p>
           </div>
         </CardContent>
@@ -59,7 +59,7 @@ export function ProjectTimeline({
         <CardHeader className="bg-surface-subtle dark:bg-[#1A221D]">
           <div className="flex items-center gap-2">
             <GitCommit className="w-4 h-4 text-copper dark:text-[#E08F6B]" />
-            <CardTitle>Project Git Memory & Timeline</CardTitle>
+            <CardTitle>Project History</CardTitle>
           </div>
         </CardHeader>
         <CardContent className="p-8 sm:p-12 flex flex-col items-center justify-center text-center space-y-3 min-h-[380px] bg-ivory/40 dark:bg-[#101512]">
@@ -68,12 +68,12 @@ export function ProjectTimeline({
           </div>
           <div className="space-y-1 max-w-sm">
             <h3 className="text-sm sm:text-base font-semibold text-text-primary dark:text-white">
-              {hasProject ? 'Git Timeline Pending' : 'No development history yet'}
+              {hasProject ? 'Project history not analyzed yet' : 'No development history yet'}
             </h3>
             <p className="text-xs text-text-muted leading-relaxed">
               {hasProject
-                ? 'Run repository analysis from the Overview tab to index commit history and chronological milestones.'
-                : 'Git history will appear after repository analysis.'}
+                ? 'Run analysis from Overview to see recent commits and how the project changed over time.'
+                : 'Development history will appear after connecting and analyzing your project.'}
             </p>
           </div>
           {!hasProject && (
@@ -84,7 +84,7 @@ export function ProjectTimeline({
                 onClick={onConnectRepo}
                 className="text-xs font-sans font-medium"
               >
-                Connect GitHub Repository
+                Choose repository
               </Button>
             </div>
           )}
@@ -123,16 +123,21 @@ export function ProjectTimeline({
     <Card className="overflow-hidden font-sans">
       <CardHeader className="bg-surface-subtle dark:bg-[#1A221D]">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 w-full">
-          <div className="flex items-center gap-2">
-            <GitCommit className="w-4 h-4 text-copper dark:text-[#E08F6B]" />
-            <CardTitle>Project Git Memory & Timeline</CardTitle>
+          <div>
+            <div className="flex items-center gap-2">
+              <GitCommit className="w-4 h-4 text-copper dark:text-[#E08F6B]" />
+              <CardTitle>Project History</CardTitle>
+            </div>
+            <p className="text-xs text-text-muted mt-0.5">
+              See how your project has changed over time.
+            </p>
           </div>
 
           <div className="flex items-center gap-1.5 flex-wrap">
             <Filter className="w-3.5 h-3.5 text-text-muted mr-1 hidden sm:inline" />
             {[
               { id: 'all', label: 'All History' },
-              { id: 'milestone', label: 'Milestones' },
+              { id: 'milestone', label: 'Important Changes' },
               { id: 'security', label: 'Security' },
               { id: 'database', label: 'Database' },
               { id: 'feature', label: 'Feature' },
@@ -157,10 +162,10 @@ export function ProjectTimeline({
       <CardContent className="p-4 sm:p-6">
         <div className="mb-4 flex items-center gap-2 pb-2 border-b border-border dark:border-border-dark font-sans">
           <span className="text-xs font-semibold uppercase tracking-wider text-text-primary dark:text-white px-2 py-0.5 bg-surface-muted rounded dark:bg-[#1A221D]">
-            Tracked Evolution
+            Important Changes &amp; History
           </span>
           <span className="text-xs text-text-muted">
-            {filteredEvents.length} tracked commit records
+            {filteredEvents.length} recent change{filteredEvents.length === 1 ? '' : 's'} shown
           </span>
         </div>
 
@@ -183,7 +188,7 @@ export function ProjectTimeline({
                         {ev.title}
                       </h4>
                       <Badge variant="neutral" size="xs" className="uppercase font-sans font-medium">
-                        {ev.type}
+                        {ev.type === 'milestone' ? 'important change' : ev.type}
                       </Badge>
                     </div>
 
@@ -196,16 +201,21 @@ export function ProjectTimeline({
                     </div>
                   </div>
 
-                  <p className="text-xs sm:text-sm text-text-secondary leading-relaxed mb-3 dark:text-[#A7AFA9] font-sans">
-                    {ev.explanation || ev.description}
-                  </p>
+                  <div className="space-y-2 mb-3">
+                    <div className="text-[11px] uppercase tracking-wider text-text-muted font-semibold">
+                      What changed
+                    </div>
+                    <p className="text-xs sm:text-sm text-text-secondary leading-relaxed dark:text-[#A7AFA9] font-sans">
+                      {ev.explanation || ev.description}
+                    </p>
+                  </div>
 
                   <div className="p-3 rounded bg-surface-subtle border border-border/70 text-xs space-y-1.5 dark:bg-[#141A16] dark:border-border-dark">
                     <div className="text-[11px] uppercase tracking-wider text-text-muted font-semibold">
-                      Observed Change & Derived Impact
+                      Why it changed
                     </div>
                     <p className="text-text-primary dark:text-[#E4E6E1] leading-relaxed">
-                      {ev.architecturalImpact || 'UNKNOWN: Architectural motivation not documented in Git commit log.'}
+                      {ev.architecturalImpact || 'Not documented in the commit. The commit message does not explain the broader reason for this change.'}
                     </p>
                   </div>
 
@@ -215,31 +225,51 @@ export function ProjectTimeline({
                       onClick={() => toggleExpand(ev.id)}
                       className="text-xs text-text-muted hover:text-text-primary flex items-center gap-1 font-sans font-medium dark:hover:text-white"
                     >
-                      <span>{isExpanded ? 'Hide Evidence & Diff' : 'Inspect Evidence'}</span>
+                      <span>{isExpanded ? 'Hide commit details' : 'See commit details'}</span>
                       {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                     </button>
 
                     <span className="text-xs text-text-subtle font-sans">
-                      {(ev.filesAffected || ev.filesChanged || []).length} files tracked {ev.diffStats ? `· +${ev.diffStats.additions} / -${ev.diffStats.deletions}` : ''}
+                      by {ev.author?.name || 'Developer'}
+                      {(ev.filesAffected || ev.filesChanged || []).length > 0
+                        ? ` · ${(ev.filesAffected || ev.filesChanged || []).length} files changed`
+                        : ''}
                     </span>
                   </div>
 
                   {isExpanded && (
                     <div className="mt-3 pt-3 border-t border-border space-y-2.5 dark:border-border-dark">
-                      <div className="text-[11px] uppercase tracking-wider text-text-muted font-medium">
-                        Modified Files:
-                      </div>
-                      <div className="space-y-1.5">
-                        {(ev.filesAffected || ev.filesChanged || []).map((file) => (
-                          <EvidenceBadge
-                            key={file}
-                            type="file"
-                            label={file}
-                            onClick={() => onSelectFile?.(file)}
-                            className="w-full justify-between"
-                          />
-                        ))}
-                      </div>
+                      {(ev.filesAffected || ev.filesChanged || []).length > 0 && (
+                        <>
+                          <div className="text-[11px] uppercase tracking-wider text-text-muted font-medium">
+                            Changed Files:
+                          </div>
+                          <div className="space-y-1.5">
+                            {(ev.filesAffected || ev.filesChanged || []).map((file) => (
+                              <EvidenceBadge
+                                key={file}
+                                type="file"
+                                label={file}
+                                onClick={() => onSelectFile?.(file)}
+                                className="w-full justify-between"
+                              />
+                            ))}
+                          </div>
+                        </>
+                      )}
+
+                      <details className="text-xs text-text-muted">
+                        <summary className="cursor-pointer font-medium hover:text-text-primary dark:hover:text-white select-none text-[11px]">
+                          Technical details
+                        </summary>
+                        <div className="mt-1.5 p-2 rounded bg-surface dark:bg-[#141A16] border border-border dark:border-border-dark font-mono text-[11px] space-y-0.5">
+                          <div>Commit SHA: {ev.commitHash}</div>
+                          <div>Author: {ev.author?.name} ({ev.author?.handle})</div>
+                          {ev.diffStats && (
+                            <div>Diff stats: +{ev.diffStats.additions} / -{ev.diffStats.deletions} lines</div>
+                          )}
+                        </div>
+                      </details>
                     </div>
                   )}
                 </div>

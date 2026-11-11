@@ -53,7 +53,7 @@ export function ProjectIntelligencePanel({
       setResult({
         fact: null,
         inference: null,
-        unknown: 'Network error connecting to query engine.',
+        unknown: 'Unable to reach MarrowNode right now. Please try again.',
         citations: [],
       });
     } finally {
@@ -68,11 +68,11 @@ export function ProjectIntelligencePanel({
           <div className="flex items-center justify-between w-full">
             <div className="flex items-center gap-2">
               <Terminal className="w-4 h-4 text-forest dark:text-[#88B094]" />
-              <CardTitle>Project Intelligence</CardTitle>
+              <CardTitle>Ask MarrowNode</CardTitle>
             </div>
             <span className="text-xs text-text-muted flex items-center gap-1.5 font-sans">
               <ShieldCheck className="w-3.5 h-3.5 text-forest" />
-              Evidence-backed query engine
+              Based on your project
             </span>
           </div>
         </CardHeader>
@@ -86,7 +86,7 @@ export function ProjectIntelligencePanel({
               Connect a repository to ask questions about your project
             </h3>
             <p className="text-xs text-text-muted leading-relaxed">
-              MarrowNode will provide evidence-backed technical answers once your codebase is indexed and analyzed.
+              Ask questions about your project using the files, packages, structure, and development history MarrowNode analyzed.
             </p>
           </div>
           <div className="pt-2">
@@ -96,7 +96,7 @@ export function ProjectIntelligencePanel({
               onClick={onConnectRepo}
               className="text-xs font-sans font-medium"
             >
-              Connect GitHub Repository
+              Choose repository
             </Button>
           </div>
         </CardContent>
@@ -110,11 +110,11 @@ export function ProjectIntelligencePanel({
         <div className="flex items-center justify-between w-full">
           <div className="flex items-center gap-2">
             <Terminal className="w-4 h-4 text-forest dark:text-[#88B094]" />
-            <CardTitle>Project Intelligence</CardTitle>
+            <CardTitle>Ask MarrowNode</CardTitle>
           </div>
           <span className="text-xs text-text-muted flex items-center gap-1.5 font-sans">
             <ShieldCheck className="w-3.5 h-3.5 text-forest" />
-            Active Project Query Engine
+            Answer based on analyzed project data
           </span>
         </div>
       </CardHeader>
@@ -128,7 +128,7 @@ export function ProjectIntelligencePanel({
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               disabled={loading}
-              placeholder="Ask anything about this project… (e.g. How does authentication work?)"
+              placeholder="Ask anything about your project… (e.g. How does login work?)"
               className="w-full h-10 pl-10 pr-24 bg-surface border border-border rounded text-xs font-sans text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-forest focus:border-forest transition-colors dark:bg-[#151C17] dark:border-border-dark dark:text-white"
             />
             <div className="absolute right-1.5 flex items-center">
@@ -150,16 +150,16 @@ export function ProjectIntelligencePanel({
             {result.fact && (
               <div className="p-2.5 rounded bg-forest/10 border border-forest/20 space-y-1">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-forest dark:text-[#88B094] block">
-                  FACT (Code Evidence)
+                  CONFIRMED FROM YOUR PROJECT
                 </span>
-                <span className="text-text-primary dark:text-white">{result.fact}</span>
+                <span className="text-text-primary dark:text-white whitespace-pre-line">{result.fact}</span>
               </div>
             )}
 
             {result.inference && (
               <div className="p-2.5 rounded bg-copper/10 border border-copper/20 space-y-1">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-copper dark:text-[#E08F6B] block">
-                  INFERENCE
+                  BASED ON PROJECT STRUCTURE
                 </span>
                 <span className="text-text-primary dark:text-white">{result.inference}</span>
               </div>
@@ -168,7 +168,7 @@ export function ProjectIntelligencePanel({
             {result.unknown && (
               <div className="p-2.5 rounded bg-surface border border-border dark:bg-[#1A221D] dark:border-border-dark text-text-muted space-y-1">
                 <span className="text-[10px] font-bold uppercase tracking-wider block">
-                  UNKNOWN
+                  NOT FOUND IN THE PROJECT
                 </span>
                 <span>{result.unknown}</span>
               </div>
@@ -176,7 +176,7 @@ export function ProjectIntelligencePanel({
 
             {result.citations && result.citations.length > 0 && (
               <div className="pt-2 border-t border-border dark:border-border-dark flex flex-wrap items-center gap-1.5">
-                <span className="text-[10px] uppercase font-semibold text-text-muted">Citations:</span>
+                <span className="text-[10px] uppercase font-semibold text-text-muted">Found in:</span>
                 {result.citations.map((c: any, i: number) => (
                   <span
                     key={i}

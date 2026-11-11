@@ -268,12 +268,12 @@ export async function getProjectWorkstationContext(
       evidenceItems.push({
         id: ev.id,
         type: 'Files',
-        name: ev.title || 'Repository Structure',
+        name: 'Project Size & Structure',
         pathOrIdentifier: ev.path || '/',
         date: ev.createdAt.toISOString().split('T')[0],
         relevanceScore: 98,
         relevanceLevel: 'Primary',
-        snippetOrContext: `Indexed ${totalFilesCount} files across ${meta.topLevelDirectories?.length || 0} top-level directories`,
+        snippetOrContext: `Found ${totalFilesCount} files across ${meta.topLevelDirectories?.length || 0} main folders`,
         relatedModules: meta.topLevelDirectories || [],
       });
     }
@@ -293,12 +293,12 @@ export async function getProjectWorkstationContext(
       evidenceItems.push({
         id: ev.id,
         type: 'Architecture relationships',
-        name: ev.title || 'Architectural Topology',
-        pathOrIdentifier: meta.framework || 'Module Graph',
+        name: 'Project Technology & Structure',
+        pathOrIdentifier: meta.framework || 'Project Structure',
         date: ev.createdAt.toISOString().split('T')[0],
         relevanceScore: 95,
         relevanceLevel: 'Primary',
-        snippetOrContext: `Detected ${meta.framework || 'Generic'} application with ${modules.length} functional modules and ${nodes.length} nodes`,
+        snippetOrContext: `${meta.framework || 'Software'} project organized into ${modules.length} main areas`,
         relatedModules: modules,
       });
     }
@@ -329,7 +329,7 @@ export async function getProjectWorkstationContext(
             month: commitDate.toLocaleString('default', { month: 'short' }),
             type: eventType,
             title: c.message || `Commit ${c.sha}`,
-            explanation: `Observed change in commit ${c.sha} by ${c.author || 'Developer'}`,
+            explanation: `Change in commit ${c.sha} by ${c.author || 'Developer'}`,
             architecturalImpact: undefined,
             commitHash: c.sha || 'unknown',
             commitShort: (c.sha || 'unknown').substring(0, 7),
@@ -345,12 +345,12 @@ export async function getProjectWorkstationContext(
       evidenceItems.push({
         id: ev.id,
         type: 'Commits',
-        name: ev.title || 'Recent Commit Memory',
-        pathOrIdentifier: `HEAD (${timeline.length} commits)`,
+        name: 'Recent Development History',
+        pathOrIdentifier: `Recent ${timeline.length} commits`,
         date: ev.createdAt.toISOString().split('T')[0],
         relevanceScore: 92,
         relevanceLevel: 'High',
-        snippetOrContext: timeline[0]?.title || 'Git commit history indexed',
+        snippetOrContext: timeline[0]?.title || 'Recent project commits analyzed',
         relatedModules: [],
       });
     }
@@ -364,12 +364,12 @@ export async function getProjectWorkstationContext(
       evidenceItems.push({
         id: ev.id,
         type: 'Dependencies',
-        name: ev.title || 'Detected Dependencies',
+        name: 'External Packages',
         pathOrIdentifier: ev.path || 'package.json',
         date: ev.createdAt.toISOString().split('T')[0],
         relevanceScore: 90,
         relevanceLevel: 'High',
-        snippetOrContext: `${meta.totalCount || dependencies.length} packages identified (${dependencies.slice(0, 5).join(', ')}...)`,
+        snippetOrContext: `${meta.totalCount || dependencies.length} packages found (${dependencies.slice(0, 5).join(', ')}...)`,
         relatedModules: [],
       });
     }
@@ -382,12 +382,12 @@ export async function getProjectWorkstationContext(
       evidenceItems.push({
         id: ev.id,
         type: 'Documentation',
-        name: ev.title || 'Repository Documentation',
+        name: 'Project Documentation',
         pathOrIdentifier: ev.path || 'README.md',
         date: ev.createdAt.toISOString().split('T')[0],
         relevanceScore: 88,
         relevanceLevel: 'Supporting',
-        snippetOrContext: readmePreview || 'Project README documentation indexed',
+        snippetOrContext: readmePreview || 'Project documentation found',
         relatedModules: [],
       });
     }

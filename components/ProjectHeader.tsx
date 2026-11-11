@@ -60,10 +60,10 @@ export function ProjectHeader({
             </div>
             <div>
               <h1 className="text-sm sm:text-base font-semibold tracking-tight text-text-primary dark:text-white">
-                No repository connected
+                No project connected
               </h1>
               <p className="text-xs text-text-muted">
-                Connect a GitHub repository to begin building your project context.
+                Connect a GitHub repository to start exploring your project.
               </p>
             </div>
           </div>
@@ -75,12 +75,12 @@ export function ProjectHeader({
               className="text-xs font-sans font-medium"
             >
               <Plus className="w-3.5 h-3.5 mr-1.5" />
-              Connect Repository
+              Choose repository
             </Button>
           ) : (
             <Link href="/onboarding">
               <Button variant="primary" size="sm" className="text-xs font-sans font-medium">
-                Connect Repository
+                Choose repository
               </Button>
             </Link>
           )}
@@ -89,10 +89,20 @@ export function ProjectHeader({
     );
   }
 
-  const owner = project.githubOwner || 'Workspace';
-  const lastIndexedText = project.lastAnalyzedAt
+  const owner = project.githubOwner || 'Project';
+  const lastAnalyzedText = project.lastAnalyzedAt
     ? `Analyzed ${new Date(project.lastAnalyzedAt).toLocaleDateString()}`
     : 'Not analyzed yet';
+
+  const statusLabel = isAnalyzing
+    ? 'Analyzing...'
+    : project.analysisStatus === 'COMPLETED'
+    ? 'Analysis complete'
+    : project.analysisStatus === 'FAILED'
+    ? 'Analysis failed'
+    : project.analysisStatus === 'RUNNING'
+    ? 'Analyzing...'
+    : 'Waiting to analyze';
 
   const statusVariant =
     project.analysisStatus === 'COMPLETED'
@@ -127,22 +137,28 @@ export function ProjectHeader({
                 ) : (
                   <Clock className="w-3 h-3 text-text-muted" />
                 )}
-                <span>
-                  {isAnalyzing
-                    ? 'Analyzing...'
-                    : project.analysisStatus || 'PENDING'}
-                </span>
+                <span>{statusLabel}</span>
               </Badge>
 
               {freshness === 'STALE' && (
-                <Badge variant="copper" size="sm" className="font-sans font-medium text-[10px]">
-                  STALE (New Commits)
+                <Badge
+                  variant="copper"
+                  size="sm"
+                  className="font-sans font-medium text-[10px]"
+                  title="Newer commits exist on GitHub since the last analysis"
+                >
+                  New changes available
                 </Badge>
               )}
 
               {freshness === 'PARTIAL' && (
-                <Badge variant="neutral" size="sm" className="font-sans font-medium text-[10px]">
-                  PARTIAL SCOPE
+                <Badge
+                  variant="neutral"
+                  size="sm"
+                  className="font-sans font-medium text-[10px]"
+                  title="Part of the project files were analyzed"
+                >
+                  Partially analyzed
                 </Badge>
               )}
 
@@ -164,7 +180,7 @@ export function ProjectHeader({
               <Code2 className="w-3.5 h-3.5 text-text-secondary" />
               <span>Language:</span>
               <strong className="text-text-primary font-medium dark:text-[#E4E6E1]">
-                {project.primaryLanguage || 'Detecting...'}
+                {project.primaryLanguage || 'Checking...'}
               </strong>
             </span>
 
@@ -172,7 +188,7 @@ export function ProjectHeader({
               <Layers className="w-3.5 h-3.5 text-text-secondary" />
               <span>Framework:</span>
               <strong className="text-text-primary font-medium dark:text-[#E4E6E1]">
-                {project.framework || 'Detecting...'}
+                {project.framework || 'Checking...'}
               </strong>
             </span>
 
@@ -188,7 +204,7 @@ export function ProjectHeader({
 
             <span className="inline-flex items-center gap-1.5 text-text-subtle">
               <Clock className="w-3 h-3" />
-              <span>{lastIndexedText}</span>
+              <span>{lastAnalyzedText}</span>
             </span>
           </div>
         </div>
@@ -203,7 +219,7 @@ export function ProjectHeader({
               className="text-xs font-sans font-medium"
             >
               <FolderGit2 className="w-3.5 h-3.5 mr-1.5" />
-              Repositories
+              Choose repository
             </Button>
           )}
 
@@ -224,12 +240,12 @@ export function ProjectHeader({
               ) : project.analysisStatus === 'COMPLETED' ? (
                 <>
                   <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
-                  Re-analyze
+                  Analyze again
                 </>
               ) : (
                 <>
                   <Play className="w-3.5 h-3.5 mr-1.5 fill-current" />
-                  Start Analysis
+                  Analyze project
                 </>
               )}
             </Button>
@@ -244,7 +260,7 @@ export function ProjectHeader({
               className="text-xs font-sans font-medium"
             >
               <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${isRefreshing ? 'animate-spin' : ''}`} />
-              Sync
+              Sync changes
             </Button>
           )}
         </div>

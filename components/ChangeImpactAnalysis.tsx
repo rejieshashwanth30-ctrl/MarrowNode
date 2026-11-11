@@ -102,7 +102,7 @@ export function ChangeImpactAnalysis({
         });
 
         if (!res.ok) {
-          throw new Error(`Failed to calculate blast radius (${res.status})`);
+          throw new Error(`Could not calculate change impact (${res.status})`);
         }
 
         const data: BlastRadiusData = await res.json();
@@ -112,7 +112,7 @@ export function ChangeImpactAnalysis({
         }
       } catch (err: any) {
         if (err.name !== 'AbortError' && isMounted) {
-          setImpactError(err?.message || 'Error computing graph traversal');
+          setImpactError(err?.message || 'Unable to compute file connections right now.');
           setIsLoadingImpact(false);
         }
       }
@@ -132,7 +132,7 @@ export function ChangeImpactAnalysis({
         <CardHeader className="bg-surface-subtle dark:bg-[#1A221D]">
           <div className="flex items-center gap-2">
             <Cpu className="w-4 h-4 text-forest dark:text-[#88B094]" />
-            <CardTitle>Change Impact Analysis</CardTitle>
+            <CardTitle>Change Impact</CardTitle>
           </div>
         </CardHeader>
         <CardContent className="p-8 sm:p-12 flex flex-col items-center justify-center text-center space-y-3 min-h-[380px] bg-ivory/40 dark:bg-[#101512]">
@@ -141,10 +141,10 @@ export function ChangeImpactAnalysis({
           </div>
           <div className="space-y-1 max-w-sm">
             <h3 className="text-sm sm:text-base font-semibold text-text-primary dark:text-white">
-              Computing Blast Radius Models…
+              Checking what could be affected…
             </h3>
             <p className="text-xs text-text-muted leading-relaxed">
-              Evaluating import graphs and dependency paths across repository files.
+              Scanning how files and folders in your project connect to each other.
             </p>
           </div>
         </CardContent>
@@ -158,7 +158,7 @@ export function ChangeImpactAnalysis({
         <CardHeader className="bg-surface-subtle dark:bg-[#1A221D]">
           <div className="flex items-center gap-2">
             <Cpu className="w-4 h-4 text-forest dark:text-[#88B094]" />
-            <CardTitle>Change Impact Analysis</CardTitle>
+            <CardTitle>Change Impact</CardTitle>
           </div>
         </CardHeader>
 
@@ -168,12 +168,12 @@ export function ChangeImpactAnalysis({
           </div>
           <div className="space-y-1 max-w-sm">
             <h3 className="text-sm sm:text-base font-semibold text-text-primary dark:text-white">
-              {hasProject ? 'Analysis Required for Impact Modeling' : 'Change impact analysis unavailable'}
+              {hasProject ? 'Analyze your project to see change impact' : 'Change impact unavailable'}
             </h3>
             <p className="text-xs text-text-muted leading-relaxed">
               {hasProject
-                ? 'Run repository analysis from the Overview tab to compute call graphs, AST dependencies, and impact models.'
-                : 'Connect and analyze a repository to evaluate blast radius, affected downstream consumers, and direct/transitive dependency changes.'}
+                ? 'Run analysis from Overview to see which files and parts of your project depend on each other.'
+                : 'Connect and analyze a project to see what could be affected when you make a change.'}
             </p>
           </div>
           {!hasProject && (
@@ -184,7 +184,7 @@ export function ChangeImpactAnalysis({
                 onClick={onConnectRepo}
                 className="text-xs font-sans font-medium"
               >
-                Connect GitHub Repository
+                Choose repository
               </Button>
             </div>
           )}
@@ -195,6 +195,17 @@ export function ChangeImpactAnalysis({
 
   // Determine Blast Rating & Colors from live telemetry
   const blastRating = impactData?.blastRating || (changeType === 'delete' ? 'CRITICAL' : 'MODERATE');
+  const friendlyRatingLabel =
+    blastRating === 'ISOLATED'
+      ? 'NO OTHER PARTS CONNECTED'
+      : blastRating === 'CRITICAL'
+      ? 'VERY HIGH IMPACT'
+      : blastRating === 'HIGH'
+      ? 'HIGH IMPACT'
+      : blastRating === 'MODERATE'
+      ? 'MODERATE IMPACT'
+      : 'LOW IMPACT';
+
   const blastColor =
     blastRating === 'CRITICAL'
       ? 'text-rose-500'
@@ -213,19 +224,24 @@ export function ChangeImpactAnalysis({
     <Card className="overflow-hidden font-sans">
       <CardHeader className="bg-surface-subtle dark:bg-[#1A221D] p-4 sm:p-5 border-b border-border dark:border-border-dark">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 w-full">
-          <div className="flex items-center gap-2">
-            <Cpu className="w-4 h-4 text-forest dark:text-[#88B094]" />
-            <CardTitle>Architectural Blast Radius & Impact Simulator</CardTitle>
+          <div>
+            <div className="flex items-center gap-2">
+              <Cpu className="w-4 h-4 text-forest dark:text-[#88B094]" />
+              <CardTitle>Change Impact</CardTitle>
+            </div>
+            <p className="text-xs text-text-muted mt-0.5">
+              Choose a part of your project and see what could be affected if you change it.
+            </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             {isLoadingImpact && (
-              <span className="text-[10px] text-text-muted flex items-center gap-1 font-mono">
+              <span className="text-[10px] text-text-muted flex items-center gap-1 font-sans">
                 <RefreshCw className="w-3 h-3 animate-spin text-forest" />
-                traversing AST…
+                checking connections…
               </span>
             )}
-            <Badge variant="neutral" size="xs" className="font-mono text-[10px]">
-              DETERMINISTIC GRAPH
+            <Badge variant="neutral" size="xs" className="font-sans text-[11px] font-medium">
+              Based on project connections
             </Badge>
           </div>
         </div>
@@ -236,7 +252,7 @@ export function ChangeImpactAnalysis({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-text-primary dark:text-white block">
-              Simulated Target (Module or Subsystem)
+              What are you changing?
             </label>
             <select
               value={selectedTarget}
@@ -246,14 +262,14 @@ export function ChangeImpactAnalysis({
               {modules.length > 0 ? (
                 modules.map((m) => (
                   <option key={m} value={m}>
-                    Module: /{m}
+                    Project area: /{m}
                   </option>
                 ))
               ) : (
                 <>
-                  <option value="app">Module: /app (Core Routing)</option>
-                  <option value="lib">Module: /lib (Shared Utilities)</option>
-                  <option value="components">Module: /components (UI Elements)</option>
+                  <option value="app">Project area: /app</option>
+                  <option value="lib">Project area: /lib</option>
+                  <option value="components">Project area: /components</option>
                 </>
               )}
             </select>
@@ -261,7 +277,7 @@ export function ChangeImpactAnalysis({
 
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-text-primary dark:text-white block">
-              Hypothetical Change Type
+              Type of change
             </label>
             <div className="grid grid-cols-3 gap-2">
               <button
@@ -273,7 +289,7 @@ export function ChangeImpactAnalysis({
                     : 'border-border bg-surface text-text-secondary dark:bg-[#151C17] dark:border-border-dark'
                 }`}
               >
-                Signature Edit
+                Changing an interface
               </button>
               <button
                 type="button"
@@ -284,7 +300,7 @@ export function ChangeImpactAnalysis({
                     : 'border-border bg-surface text-text-secondary dark:bg-[#151C17] dark:border-border-dark'
                 }`}
               >
-                Internal Refactor
+                Refactoring code
               </button>
               <button
                 type="button"
@@ -295,7 +311,7 @@ export function ChangeImpactAnalysis({
                     : 'border-border bg-surface text-text-secondary dark:bg-[#151C17] dark:border-border-dark'
                 }`}
               >
-                Deprecation
+                Removing something
               </button>
             </div>
           </div>
@@ -305,47 +321,47 @@ export function ChangeImpactAnalysis({
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="p-4 rounded bg-surface-subtle dark:bg-[#1A221D] border border-border dark:border-border-dark">
             <span className="text-[10px] uppercase font-semibold text-text-muted block mb-1">
-              Estimated Blast Radius
+              Possible impact
             </span>
-            <div className={`text-xl font-bold font-mono ${blastColor}`}>{blastRating}</div>
+            <div className={`text-lg font-bold font-sans ${blastColor}`}>{friendlyRatingLabel}</div>
             <span className="text-[11px] text-text-muted mt-1 block">
-              Evidence model: AST graph traversal
+              Based on connections in your project
             </span>
           </div>
 
           <div className="p-4 rounded bg-surface-subtle dark:bg-[#1A221D] border border-border dark:border-border-dark">
             <span className="text-[10px] uppercase font-semibold text-text-muted block mb-1">
-              Downstream Consumers
+              Other parts that may be affected
             </span>
-            <div className="text-xl font-bold font-mono text-text-primary dark:text-white">
-              {impactData ? `${impactData.directConsumersCount} direct, ${impactData.transitiveConsumersCount} transitive` : 'Traversing…'}
+            <div className="text-lg font-bold font-sans text-text-primary dark:text-white">
+              {impactData ? `${impactData.directConsumersCount} direct, ${impactData.transitiveConsumersCount} indirect` : 'Checking…'}
             </div>
             <span className="text-[11px] text-text-muted mt-1 block">
-              {impactData ? `${impactData.totalAffectedCount} total affected files` : 'Evaluating dependency graph'}
+              {impactData ? `${impactData.totalAffectedCount} total affected files` : 'Scanning connections'}
             </span>
           </div>
 
           <div className="p-4 rounded bg-surface-subtle dark:bg-[#1A221D] border border-border dark:border-border-dark">
             <span className="text-[10px] uppercase font-semibold text-text-muted block mb-1">
-              Regression Safeguard
+              Dependency check
             </span>
-            <div className={`text-xl font-bold font-mono flex items-center gap-1.5 ${hasCycles ? 'text-amber-500' : 'text-forest dark:text-[#88B094]'}`}>
+            <div className={`text-lg font-bold font-sans flex items-center gap-1.5 ${hasCycles ? 'text-amber-500' : 'text-forest dark:text-[#88B094]'}`}>
               {hasCycles ? (
                 <>
                   <AlertTriangle className="w-5 h-5" />
-                  <span>CYCLE DETECTED</span>
+                  <span>Circular connection found</span>
                 </>
               ) : (
                 <>
                   <CheckCircle2 className="w-5 h-5" />
-                  <span>{directConsumers.length === 0 ? 'ISOLATED' : 'SAFE'}</span>
+                  <span>{directConsumers.length === 0 ? 'Isolated' : 'Clear'}</span>
                 </>
               )}
             </div>
             <span className="text-[11px] text-text-muted mt-1 block">
               {hasCycles
-                ? `${cycles.length} circular dependency cycle(s) identified`
-                : 'No circular dependencies identified'}
+                ? `${cycles.length} circular loop(s) between files`
+                : 'No circular connections found'}
             </span>
           </div>
         </div>
@@ -355,7 +371,7 @@ export function ChangeImpactAnalysis({
           <div className="p-3.5 rounded bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400 text-xs font-sans space-y-1">
             <div className="font-semibold flex items-center gap-1.5">
               <AlertTriangle className="w-4 h-4 shrink-0" />
-              <span>Circular Coupling Detected in Subsystem</span>
+              <span>Circular Connection Found Between Files</span>
             </div>
             <div className="font-mono text-[11px] pl-5 overflow-x-auto">
               {cycles[0]?.join(' → ')}
@@ -366,7 +382,7 @@ export function ChangeImpactAnalysis({
         {/* Direct Consumers Impact List */}
         <div className="space-y-2">
           <h4 className="text-xs font-semibold uppercase text-text-muted">
-            Directly Coupled Downstream Consumers ({directConsumers.length})
+            Files that directly depend on this part ({directConsumers.length})
           </h4>
           {directConsumers.length > 0 ? (
             <div className="border border-border dark:border-border-dark rounded divide-y divide-border dark:divide-border-dark text-xs max-h-60 overflow-y-auto">
@@ -386,9 +402,9 @@ export function ChangeImpactAnalysis({
             </div>
           ) : (
             <div className="p-4 rounded border border-border dark:border-border-dark bg-surface-subtle dark:bg-[#1A221D] text-center text-xs text-text-muted space-y-1">
-              <div className="font-semibold text-text-primary dark:text-white">ISOLATED SUBSYSTEM</div>
-              <p>No downstream consumers were found in the analyzed static dependency graph.</p>
-              <p className="text-[11px] text-text-subtle">Note: this reflects static AST import relationships and does not prove dynamic runtime independence.</p>
+              <div className="font-semibold text-text-primary dark:text-white">NO OTHER CONNECTED PARTS FOUND</div>
+              <p>MarrowNode did not find other project files that directly depend on this part.</p>
+              <p className="text-[11px] text-text-subtle">This is based on the project connections MarrowNode could analyze. Dynamic runtime behavior may not be visible.</p>
             </div>
           )}
         </div>
@@ -397,7 +413,7 @@ export function ChangeImpactAnalysis({
         {transitiveConsumers.length > 0 && (
           <div className="space-y-2">
             <h4 className="text-xs font-semibold uppercase text-text-muted">
-              Transitive Downstream Dependents ({transitiveConsumers.length})
+              Indirectly affected parts ({transitiveConsumers.length})
             </h4>
             <div className="border border-border dark:border-border-dark rounded divide-y divide-border dark:divide-border-dark text-xs max-h-48 overflow-y-auto">
               {transitiveConsumers.slice(0, 10).map((tc, idx) => (
@@ -409,12 +425,25 @@ export function ChangeImpactAnalysis({
                     </span>
                   </div>
                   <span className="text-[10px] text-text-muted font-mono shrink-0">
-                    via {tc.via}
+                    through {tc.via}
                   </span>
                 </div>
               ))}
             </div>
           </div>
+        )}
+
+        {impactData && (
+          <details className="pt-2 border-t border-border dark:border-border-dark text-xs text-text-muted">
+            <summary className="cursor-pointer font-medium hover:text-text-primary dark:hover:text-white select-none text-[11px]">
+              Technical details
+            </summary>
+            <div className="mt-1.5 p-2.5 rounded bg-surface-subtle dark:bg-[#141A16] font-mono text-[11px] space-y-0.5">
+              <div>Blast rating enum: {impactData.blastRating} (changeType={impactData.changeType})</div>
+              <div>Direct consumers: {impactData.directConsumersCount} · Transitive consumers: {impactData.transitiveConsumersCount}</div>
+              <div>Evidence model: Deterministic AST dependency graph traversal</div>
+            </div>
+          </details>
         )}
       </CardContent>
     </Card>

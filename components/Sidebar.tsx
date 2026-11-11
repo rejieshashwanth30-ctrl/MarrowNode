@@ -57,40 +57,47 @@ export function Sidebar({ activeView, onSelectView, user, collapsed = false }: S
     router.refresh();
   };
 
-  const navItems: { id: DashboardView; label: string; icon: React.ReactNode }[] = [
+  const navItems: { id: DashboardView; label: string; description: string; icon: React.ReactNode }[] = [
     {
       id: 'overview',
       label: 'Overview',
+      description: 'See what MarrowNode found in your project',
       icon: <LayoutDashboard className="w-4 h-4 shrink-0" />,
     },
     {
       id: 'explorer',
-      label: 'Explorer',
+      label: 'Files',
+      description: 'Browse the files and folders in your project',
       icon: <FolderTree className="w-4 h-4 shrink-0" />,
     },
     {
       id: 'architecture',
-      label: 'Architecture',
+      label: 'Project Structure',
+      description: 'See how different parts of your project connect',
       icon: <Network className="w-4 h-4 shrink-0" />,
     },
     {
       id: 'timeline',
-      label: 'Timeline',
+      label: 'History',
+      description: 'See how your project has changed over time',
       icon: <GitCommit className="w-4 h-4 shrink-0" />,
     },
     {
       id: 'ask',
-      label: 'Ask Project',
+      label: 'Ask MarrowNode',
+      description: 'Ask questions about your codebase',
       icon: <HelpCircle className="w-4 h-4 shrink-0" />,
     },
     {
       id: 'impact',
-      label: 'Impact Analysis',
+      label: 'Change Impact',
+      description: 'See what could be affected by a change',
       icon: <Cpu className="w-4 h-4 shrink-0" />,
     },
     {
       id: 'evidence',
       label: 'Evidence',
+      description: 'See the files, commits, and packages behind the analysis',
       icon: <ShieldCheck className="w-4 h-4 shrink-0" />,
     },
   ];
@@ -113,7 +120,7 @@ export function Sidebar({ activeView, onSelectView, user, collapsed = false }: S
         {/* Primary Navigation List */}
         <div className="p-2 space-y-0.5">
           <div className="px-2.5 py-1.5 text-[10px] font-sans uppercase tracking-wider text-text-muted font-medium">
-            Workstation
+            Project
           </div>
 
           {navItems.map((item) => {
@@ -121,6 +128,7 @@ export function Sidebar({ activeView, onSelectView, user, collapsed = false }: S
             return (
               <button
                 key={item.id}
+                title={item.description}
                 onClick={() => onSelectView(item.id)}
                 className={`w-full flex items-center justify-between px-2.5 py-2 rounded text-xs font-sans transition-colors text-left ${
                   isActive

@@ -31,15 +31,15 @@ export function CommandPalette({ isOpen, onClose, onSelectAction }: CommandPalet
   if (!isOpen) return null;
 
   const quickActions = [
-    { type: 'view' as const, label: 'Overview Workstation', target: 'overview', category: 'Navigation', icon: <Network className="w-3.5 h-3.5 text-forest" /> },
-    { type: 'view' as const, label: 'Architecture Graph', target: 'architecture', category: 'Navigation', icon: <Network className="w-3.5 h-3.5 text-forest" /> },
-    { type: 'view' as const, label: 'Repository Explorer', target: 'explorer', category: 'Navigation', icon: <FileCode className="w-3.5 h-3.5 text-text-muted" /> },
-    { type: 'view' as const, label: 'Project Timeline', target: 'timeline', category: 'Navigation', icon: <GitCommit className="w-3.5 h-3.5 text-copper" /> },
-    { type: 'view' as const, label: 'Ask Project Q&A', target: 'ask', category: 'Navigation', icon: <HelpCircle className="w-3.5 h-3.5 text-forest" /> },
-    { type: 'file' as const, label: 'src/middleware.ts', target: 'src/middleware.ts', category: 'Source File', icon: <FileCode className="w-3.5 h-3.5 text-forest" />, isCode: true },
-    { type: 'file' as const, label: 'prisma/schema.prisma', target: 'prisma/schema.prisma', category: 'Source File', icon: <FileCode className="w-3.5 h-3.5 text-copper" />, isCode: true },
-    { type: 'query' as const, label: 'How does authentication work?', target: 'How does authentication work?', category: 'Intelligence', icon: <HelpCircle className="w-3.5 h-3.5 text-forest" /> },
-    { type: 'query' as const, label: 'Why is Prisma used?', target: 'Why is Prisma used?', category: 'Intelligence', icon: <HelpCircle className="w-3.5 h-3.5 text-forest" /> },
+    { type: 'view' as const, label: 'Overview', target: 'overview', category: 'Navigation', icon: <Network className="w-3.5 h-3.5 text-forest" /> },
+    { type: 'view' as const, label: 'Project Structure', target: 'architecture', category: 'Navigation', icon: <Network className="w-3.5 h-3.5 text-forest" /> },
+    { type: 'view' as const, label: 'Project Files', target: 'explorer', category: 'Navigation', icon: <FileCode className="w-3.5 h-3.5 text-text-muted" /> },
+    { type: 'view' as const, label: 'Project History', target: 'timeline', category: 'Navigation', icon: <GitCommit className="w-3.5 h-3.5 text-copper" /> },
+    { type: 'view' as const, label: 'Ask MarrowNode', target: 'ask', category: 'Navigation', icon: <HelpCircle className="w-3.5 h-3.5 text-forest" /> },
+    { type: 'file' as const, label: 'src/middleware.ts', target: 'src/middleware.ts', category: 'File', icon: <FileCode className="w-3.5 h-3.5 text-forest" />, isCode: true },
+    { type: 'file' as const, label: 'prisma/schema.prisma', target: 'prisma/schema.prisma', category: 'File', icon: <FileCode className="w-3.5 h-3.5 text-copper" />, isCode: true },
+    { type: 'query' as const, label: 'How does authentication work?', target: 'How does authentication work?', category: 'Question', icon: <HelpCircle className="w-3.5 h-3.5 text-forest" /> },
+    { type: 'query' as const, label: 'What database does this project use?', target: 'What database does this project use?', category: 'Question', icon: <HelpCircle className="w-3.5 h-3.5 text-forest" /> },
   ];
 
   const filtered = quickActions.filter((a) =>

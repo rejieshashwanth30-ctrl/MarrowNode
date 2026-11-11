@@ -241,7 +241,7 @@ function synthesizeIntentGroundedAnswer(
     q.includes('motivation') ||
     q.includes('decision to');
 
-  const parsedScopeStr = `${context.coverage?.files?.parsed || 0} of ${context.coverage?.files?.source || context.summary.totalFiles} source files indexed`;
+  const parsedScopeStr = `${context.coverage?.files?.parsed || 0} of ${context.coverage?.files?.source || context.summary.totalFiles} source files analyzed`;
 
   switch (intent) {
     case 'DEPENDENCY': {
@@ -252,22 +252,22 @@ function synthesizeIntentGroundedAnswer(
 
       if (deps.length > 0) {
         const coreHighlights: string[] = [];
-        if (categories.framework.length > 0) coreHighlights.push(`• **Framework & UI:** ${categories.framework.join(', ')}`);
-        if (categories.database.length > 0) coreHighlights.push(`• **Database & ORM:** ${categories.database.join(', ')}`);
-        if (categories.auth.length > 0) coreHighlights.push(`• **Authentication & Backend:** ${categories.auth.join(', ')}`);
-        if (categories.uiAndStyling.length > 0) coreHighlights.push(`• **Components & Styling:** ${categories.uiAndStyling.join(', ')}`);
-        if (categories.tooling.length > 0) coreHighlights.push(`• **Tooling & Compilation:** ${categories.tooling.slice(0, 4).join(', ')}`);
+        if (categories.framework.length > 0) coreHighlights.push(`• Framework & UI: ${categories.framework.join(', ')}`);
+        if (categories.database.length > 0) coreHighlights.push(`• Database & Data: ${categories.database.join(', ')}`);
+        if (categories.auth.length > 0) coreHighlights.push(`• Login & Security: ${categories.auth.join(', ')}`);
+        if (categories.uiAndStyling.length > 0) coreHighlights.push(`• Styling & Icons: ${categories.uiAndStyling.join(', ')}`);
+        if (categories.tooling.length > 0) coreHighlights.push(`• Build & Code Tools: ${categories.tooling.slice(0, 4).join(', ')}`);
 
-        fact = `The repository declares ${declaredCount} external packages in package.json.\n\n**CORE EXTERNAL DEPENDENCIES:**\n${coreHighlights.join('\n')}`;
-        inference = `${resolvedCount} of ${declaredCount} declared packages matched verified resolution metadata and static import links across ${parsedScopeStr}.`;
+        fact = `This project declares ${declaredCount} external packages in package.json.\n\nMain packages used:\n${coreHighlights.join('\n')}`;
+        inference = `${resolvedCount} of ${declaredCount} packages were confirmed across ${parsedScopeStr}.`;
         unknown = isMotivationQuery
-          ? 'UNKNOWN: The repository package manifest records declared package versions, but does not state the original business decision or architectural rationale for selecting each library over alternatives.'
-          : 'Static analysis proves declared packages and static import references. Dynamic import targets or runtime-only package usage cannot be verified statically.';
+          ? 'The package list shows which libraries are installed, though it does not document why each library was chosen.'
+          : 'MarrowNode checks package lists and code imports. Packages loaded only dynamically at runtime may not be visible.';
 
-        citations.push({ path: 'package.json', label: 'package.json (Manifest)', type: 'Manifest' });
+        citations.push({ path: 'package.json', label: 'package.json', type: 'Manifest' });
       } else {
-        fact = `No external dependencies were identified in repository manifest files (${parsedScopeStr}).`;
-        unknown = 'No package.json or ecosystem manifests were found in the analyzed tree.';
+        fact = `No external packages were found in this project (${parsedScopeStr}).`;
+        unknown = 'No package.json or dependency list was found in the analyzed files.';
         confidence = 'Low';
       }
       break;
@@ -280,17 +280,17 @@ function synthesizeIntentGroundedAnswer(
       const docTypes = docCoverage?.docTypes || (hasReadme ? ['README'] : []);
 
       if (hasReadme) {
-        fact = `Project documentation is present in the repository (${docTypes.join(', ')}).`;
+        fact = `Project documentation was found (${docTypes.join(', ')}).`;
         if (context.summary.readmePreview) {
-          inference = `README summary: ${context.summary.readmePreview.substring(0, 200)}…`;
+          inference = `Summary from README: ${context.summary.readmePreview.substring(0, 200)}…`;
         }
         citations.push({ path: 'README.md', label: 'README.md', type: 'Documentation' });
       } else if (docFilesCount > 0) {
-        fact = `The repository contains ${docFilesCount} documentation artifact(s): ${docTypes.join(', ')}.`;
+        fact = `This project contains ${docFilesCount} documentation file(s): ${docTypes.join(', ')}.`;
       } else {
-        fact = 'No documentation artifacts (such as README.md, docs/ directory, or architecture RFCs) were detected in the analyzed repository.';
-        inference = 'The repository currently lacks published onboarding documentation or an architecture specification in the root workspace.';
-        unknown = 'Documentation may exist externally on team wikis or issue trackers, but none is committed to the indexed repository tree.';
+        fact = 'No README or documentation files were found in this project.';
+        inference = 'This project does not include setup instructions or markdown documentation in its main folder.';
+        unknown = 'Project documentation may live outside this codebase (such as in team notes or docs), which MarrowNode cannot read.';
       }
       break;
     }
@@ -299,21 +299,20 @@ function synthesizeIntentGroundedAnswer(
       const cleanTarget = query.replace(/(?:what\s+breaks\s+if\s+i\s+change|what\s+depends\s+on|blast\s+radius\s+of|impact\s+of)\s*/i, '').trim() || 'app';
       const matchingEdges = context.edges.filter((e) => e.target.toLowerCase().includes(cleanTarget.toLowerCase()));
 
-      fact = `According to the analyzed static dependency graph, ${matchingEdges.length} inter-module relationship(s) depend directly on target "${cleanTarget}".`;
+      fact = `Based on project connections, ${matchingEdges.length} project area(s) directly use "${cleanTarget}".`;
       inference = matchingEdges.length > 0
-        ? `Direct consumers importing this target: ${matchingEdges.slice(0, 4).map((e) => e.source).join(', ')}.`
-        : `Target "${cleanTarget}" has 0 incoming static import edges in the mapped dependency graph and represents an isolated subsystem.`;
-      unknown = 'Dynamic runtime invocations, network RPCs, and environment variables are not captured in static import graphs.';
+        ? `Areas that depend on this: ${matchingEdges.slice(0, 4).map((e) => e.source).join(', ')}.`
+        : `No other project parts directly depend on "${cleanTarget}" in the analyzed connections.`;
+      unknown = 'Dynamic runtime calls or external webhooks cannot be seen from reading source files alone.';
 
       if (matchingEdges.length > 0) {
-        matchingEdges.slice(0, 3).forEach((e) => citations.push({ path: e.source, label: `Edge from ${e.source}`, type: 'Edge' }));
+        matchingEdges.slice(0, 3).forEach((e) => citations.push({ path: e.source, label: `Used by ${e.source}`, type: 'Edge' }));
       }
       break;
     }
 
     case 'HISTORY': {
       if (context.timeline.length > 0) {
-        // Check if query is looking for a specific topic (e.g., "When was GitHub OAuth introduced?")
         const searchWords = q.split(/\s+/).filter((w) => w.length > 3 && !['when', 'what', 'which', 'commit', 'history', 'recent', 'introduced', 'added', 'with'].includes(w));
         const matchingCommits = searchWords.length > 0
           ? context.timeline.filter((c) => searchWords.some((w) => c.title.toLowerCase().includes(w) || c.explanation.toLowerCase().includes(w)))
@@ -321,20 +320,20 @@ function synthesizeIntentGroundedAnswer(
 
         if (matchingCommits.length > 0) {
           const top = matchingCommits[0];
-          fact = `Commit evidence within indexed scope (${context.coverage?.git?.historyScope || `${context.timeline.length} commits`}):\n• Commit **#${top.commitShort}** by **${top.author.name}** on **${top.date}**: "${top.title}".`;
-          inference = `Modified components participate in the ${context.summary.framework} application layer.`;
+          fact = `Found in recent development history (${context.timeline.length} commits reviewed):\n• Change #${top.commitShort} by ${top.author.name} on ${top.date}: "${top.title}".`;
+          inference = `These changes belong to your ${context.summary.framework} project.`;
           unknown = isMotivationQuery
-            ? 'UNKNOWN: The repository commit log records the change summary authored by the developer, but does not provide an architectural decision record explaining the business motivation.'
-            : 'Commits outside the default branch history scope are not reflected in this snapshot.';
+            ? 'The commit message shows what changed, though it does not explain the broader reason for the decision.'
+            : 'Older commits outside the analyzed recent history window are not included here.';
           citations.push({ path: top.commitShort, label: `Commit #${top.commitShort}`, type: 'Commit' });
         } else {
-          fact = `None of the commits in the analyzed history scope (${context.coverage?.git?.historyScope || `${context.timeline.length} commits`}) explicitly match "${searchWords.join(' ')}".`;
-          unknown = `The event may have been introduced in an earlier commit outside the current indexed scope (${context.coverage?.git?.historyScope || 'HEAD window'}).`;
+          fact = `None of the ${context.timeline.length} recent commits reviewed explicitly mention "${searchWords.join(' ')}".`;
+          unknown = 'This may have happened in an older commit outside the recent commits analyzed.';
           confidence = 'Medium';
         }
       } else {
-        fact = 'No historical commits have been indexed for this repository yet.';
-        unknown = 'Git history timeline is unavailable.';
+        fact = 'No recent commits have been analyzed for this project yet.';
+        unknown = 'Development history is not available yet.';
         confidence = 'Low';
       }
       break;
@@ -354,15 +353,15 @@ function synthesizeIntentGroundedAnswer(
       const usesSupabase = context.dependencies.some((d) => d.includes('supabase')) || authFiles.some((f) => f.includes('supabase'));
 
       if (authFiles.length > 0 || usesSupabase) {
-        fact = `Authentication is anchored through ${usesSupabase ? 'Supabase Auth' : 'custom route handlers'}.\n• Implementation files detected: ${authFiles.slice(0, 5).join(', ')}.`;
-        inference = 'User session cookies and JWT identity verification are managed on the server side via middleware and API route handlers.';
+        fact = `Login and user authentication are handled through ${usesSupabase ? 'Supabase Auth' : 'server authentication routes'}.\n• Key files found: ${authFiles.slice(0, 5).join(', ')}.`;
+        inference = 'User sessions and login cookies are verified safely on the server before protected pages or data load.';
         unknown = isMotivationQuery
-          ? 'UNKNOWN: Insufficient repository evidence to determine the original business motivation or decision rationale for choosing this authentication strategy.'
-          : 'Cloud-level session lifetime policies and MFA settings are not hardcoded in repository source files.';
+          ? 'The code shows how login works, though it does not document why this login provider was chosen.'
+          : 'Live settings like session timeouts or account policies live in your authentication dashboard rather than in the code.';
         authFiles.slice(0, 4).forEach((f) => citations.push({ path: f, label: f, type: 'File' }));
       } else {
-        fact = `No standard Supabase or OAuth authentication library was identified in the analyzed repository evidence (${parsedScopeStr}).`;
-        unknown = 'Authentication mechanics cannot be determined from indexed files.';
+        fact = `No standard login or authentication library was found in the analyzed files (${parsedScopeStr}).`;
+        unknown = 'Login behavior could not be confirmed from the analyzed files.';
         confidence = 'Low';
       }
       break;
@@ -372,30 +371,29 @@ function synthesizeIntentGroundedAnswer(
       const hasPrisma = context.dependencies.some((d) => d.includes('prisma')) ||
         context.fileTree.some((n) => n.path.includes('prisma'));
 
-      fact = `Database interaction is managed via ${hasPrisma ? 'Prisma ORM with PostgreSQL (schema: marrownode)' : (context.project.database || 'standard relational drivers')}.`;
+      fact = `This project uses ${hasPrisma ? 'PostgreSQL through Prisma' : (context.project.database || 'database storage')}.`;
       inference = hasPrisma
-        ? 'Database models, enums, and relations are defined in prisma/schema.prisma and accessed via generated client bindings.'
-        : 'Database connections are configured through server-side environment variables.';
+        ? 'Your database tables and relationships are defined in prisma/schema.prisma and used across the app through Prisma.'
+        : 'Database connections are set up through server environment variables.';
       unknown = isMotivationQuery
-        ? 'UNKNOWN: Insufficient repository evidence to determine why this ORM or database provider was chosen.'
-        : 'Production connection pool sizes and physical cloud database topology cannot be determined from static source code.';
+        ? 'The codebase shows which database tools are used, though it does not document why this database was chosen.'
+        : 'Live database server settings and runtime performance cannot be checked from source files alone.';
 
       if (hasPrisma) citations.push({ path: 'prisma/schema.prisma', label: 'prisma/schema.prisma', type: 'Schema' });
       break;
     }
 
     case 'FRAMEWORK': {
-      fact = `The project is built with **${context.summary.framework}** using **${context.summary.topLanguage}**.\n• Core dependencies: ${context.dependencies.slice(0, 6).join(', ')}.`;
-      inference = `Architectural boundaries are structured around ${context.modules.slice(0, 4).map((m) => `/${m}`).join(', ')}.`;
+      fact = `This project is built with ${context.summary.framework} using ${context.summary.topLanguage}.\n• Main packages: ${context.dependencies.slice(0, 6).join(', ')}.`;
+      inference = `Main project areas include ${context.modules.slice(0, 4).map((m) => `/${m}`).join(', ')}.`;
       unknown = isMotivationQuery
-        ? 'UNKNOWN: The repository contains framework configuration files, but does not contain an architectural decision record explaining why this framework was chosen over alternatives.'
-        : 'Serverless deployment memory quotas and target SLA are not specified in the codebase.';
-      citations.push({ path: 'package.json', label: 'package.json (Manifest)', type: 'Manifest' });
+        ? 'The files show the framework setup, though they do not document why this framework was selected.'
+        : 'Hosting setup and cloud scaling limits are outside the source files.';
+      citations.push({ path: 'package.json', label: 'package.json', type: 'Manifest' });
       break;
     }
 
     case 'FILE': {
-      // Find matching files in the file tree
       const matchedFiles: string[] = [];
       const traverse = (nodes: typeof context.fileTree) => {
         for (const n of nodes) {
@@ -412,13 +410,13 @@ function synthesizeIntentGroundedAnswer(
       traverse(context.fileTree);
 
       if (matchedFiles.length > 0) {
-        fact = `Verified repository files matching query:\n${matchedFiles.slice(0, 5).map((f) => `• \`${f}\``).join('\n')}`;
-        inference = `These files participate in the ${context.summary.framework} application structure.`;
-        unknown = 'File runtime execution frequency requires production telemetry.';
+        fact = `Files found matching your question:\n${matchedFiles.slice(0, 5).map((f) => `• ${f}`).join('\n')}`;
+        inference = `These files are part of your ${context.summary.framework} project.`;
+        unknown = 'How often these files run in production cannot be seen from code files alone.';
         matchedFiles.slice(0, 4).forEach((f) => citations.push({ path: f, label: f, type: 'File' }));
       } else {
-        fact = `No files matching "${query}" were found in the indexed repository tree (${parsedScopeStr}).`;
-        unknown = 'File does not exist or was ignored by analysis filters (e.g., node_modules, generated assets).';
+        fact = `No files matching "${query}" were found in the analyzed files (${parsedScopeStr}).`;
+        unknown = 'The file may not exist or may belong to an ignored folder like node_modules.';
         confidence = 'Low';
       }
       break;
@@ -426,21 +424,21 @@ function synthesizeIntentGroundedAnswer(
 
     case 'ARCHITECTURE': {
       const moduleList = context.modules.map((m) => `/${m}`).join(', ');
-      fact = `The codebase is organized into **${context.modules.length} modules** [${moduleList}] across **${context.nodes.length} architecture nodes** and **${context.edges.length} verified import links**.`;
-      inference = `Application boundaries follow a ${context.summary.framework} layout: /app handles route endpoints, /components encapsulates UI presentation, and /lib manages business logic, data models, and authentication.`;
-      unknown = 'Dynamic runtime dependency injection and external API webhooks are not represented in static import graphs.';
+      fact = `The project is organized into ${context.modules.length} main areas (${moduleList}) with ${context.edges.length} direct connections between parts.`;
+      inference = `Your ${context.summary.framework} codebase separates pages and routes (/app), visual UI components (/components), and shared logic, database models, and login handling (/lib).`;
+      unknown = 'Runtime-only links or external third-party webhooks are not shown in static file connections.';
 
       if (context.nodes.length > 0) {
-        context.nodes.slice(0, 3).forEach((n) => citations.push({ path: n.id, label: `Module ${n.name}`, type: 'Module' }));
+        context.nodes.slice(0, 3).forEach((n) => citations.push({ path: n.id, label: `${n.name} area`, type: 'Module' }));
       }
       break;
     }
 
     case 'GENERAL_PROJECT':
     default: {
-      fact = `The project is a **${context.summary.framework}** application (${context.summary.topLanguage}) containing ${context.summary.totalFiles} discovered files (${parsedScopeStr}).`;
-      inference = `Core structure consists of modules: ${context.modules.slice(0, 4).map((m) => `/${m}`).join(', ')}.`;
-      unknown = 'For deep subsystem queries, ask specifically about dependencies, architecture, authentication, database, or recent commits.';
+      fact = `This is a ${context.summary.framework} project (${context.summary.topLanguage}) with ${context.summary.totalFiles} files (${parsedScopeStr}).`;
+      inference = `Main project areas include: ${context.modules.slice(0, 4).map((m) => `/${m}`).join(', ')}.`;
+      unknown = 'For more specific answers, ask about packages, project structure, login/auth, database setup, or recent changes.';
       citations.push({ path: 'package.json', label: 'package.json', type: 'Manifest' });
       break;
     }

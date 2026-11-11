@@ -42,10 +42,10 @@ interface ChatMessage {
 }
 
 const SUGGESTED_QUERIES = [
-  'How does authentication work in this codebase?',
-  'What database and ORM are configured?',
-  'What are the core external dependencies?',
-  'What changed in the most recent commits?',
+  'How does login and authentication work?',
+  'What database does this project use?',
+  'What external packages does this project use?',
+  'What changed recently in this project?',
 ];
 
 export function AskProjectInterface({
@@ -117,7 +117,7 @@ export function AskProjectInterface({
         {
           id: `assistant-${Date.now()}`,
           role: 'assistant',
-          content: 'Network error communicating with the project query engine.',
+          content: 'Unable to reach MarrowNode right now. Please try again.',
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         },
       ]);
@@ -133,10 +133,10 @@ export function AskProjectInterface({
           <div className="flex items-center justify-between w-full">
             <div className="flex items-center gap-2">
               <Terminal className="w-4 h-4 text-forest dark:text-[#88B094]" />
-              <CardTitle>Ask Your Project</CardTitle>
+              <CardTitle>Ask MarrowNode</CardTitle>
             </div>
             <Badge variant="neutral" size="xs" className="font-sans font-medium">
-              EVIDENCE-ORIENTED
+              Based on your project
             </Badge>
           </div>
         </CardHeader>
@@ -146,10 +146,10 @@ export function AskProjectInterface({
           </div>
           <div className="space-y-1.5 max-w-md">
             <h3 className="text-base sm:text-lg font-bold text-text-primary dark:text-white">
-              Indexing Project Context…
+              Reading your project…
             </h3>
             <p className="text-xs sm:text-sm text-text-muted leading-relaxed">
-              MarrowNode is compiling symbol graphs and documentation evidence. The query console will activate as soon as analysis is complete.
+              MarrowNode is analyzing your files, packages, and history. You can ask questions as soon as this finishes.
             </p>
           </div>
         </CardContent>
@@ -164,10 +164,10 @@ export function AskProjectInterface({
           <div className="flex items-center justify-between w-full">
             <div className="flex items-center gap-2">
               <Terminal className="w-4 h-4 text-forest dark:text-[#88B094]" />
-              <CardTitle>Ask Your Project</CardTitle>
+              <CardTitle>Ask MarrowNode</CardTitle>
             </div>
             <Badge variant="neutral" size="xs" className="font-sans font-medium">
-              EVIDENCE-ORIENTED
+              Based on your project
             </Badge>
           </div>
         </CardHeader>
@@ -178,11 +178,11 @@ export function AskProjectInterface({
           <div className="space-y-1.5 max-w-md">
             <h3 className="text-base sm:text-lg font-bold text-text-primary dark:text-white">
               {hasProject
-                ? 'Run repository analysis to enable question answering.'
-                : 'Connect a repository to ask questions about your project.'}
+                ? 'Analyze your project to start asking questions.'
+                : 'Choose a repository to ask questions about your project.'}
             </h3>
             <p className="text-xs sm:text-sm text-text-muted leading-relaxed">
-              MarrowNode answers technical architectural questions, dependency bounds, and codebase intent using verified AST parsing and Git history once your repository is indexed.
+              Ask questions about your project using the files, packages, structure, and development history MarrowNode analyzed.
             </p>
           </div>
 
@@ -194,7 +194,7 @@ export function AskProjectInterface({
                 onClick={onConnectRepo}
                 className="w-full text-xs font-sans font-medium"
               >
-                Connect GitHub Repository
+                Choose repository
               </Button>
             </div>
           )}
@@ -209,14 +209,14 @@ export function AskProjectInterface({
         <div className="flex items-center justify-between w-full">
           <div className="flex items-center gap-2">
             <Terminal className="w-4 h-4 text-forest dark:text-[#88B094]" />
-            <CardTitle>Ask Your Project</CardTitle>
+            <CardTitle>Ask MarrowNode</CardTitle>
           </div>
           <div className="flex items-center gap-2">
             <span className="text-[11px] text-text-muted font-sans hidden sm:inline">
-              Evidence-Grounded Query
+              Answer based on analyzed project data
             </span>
             <Badge variant="success" size="xs" className="font-sans font-medium">
-              VERIFIED CONTEXT
+              Based on your project
             </Badge>
           </div>
         </div>
@@ -232,17 +232,17 @@ export function AskProjectInterface({
               </div>
               <div className="space-y-1">
                 <h4 className="text-sm font-semibold text-text-primary dark:text-white">
-                  Evidence-Grounded Repository Query Engine
+                  Ask questions about your project
                 </h4>
                 <p className="text-xs text-text-muted leading-relaxed">
-                  Ask technical questions about modules, dependencies, authentication flows, or Git history. Every answer separates verified code facts from inferences and provides traceable file citations.
+                  Ask about your files, packages, project structure, or development history. Every answer clearly shows what was found directly in your code and what files support it.
                 </p>
               </div>
 
               {/* Suggested Questions */}
               <div className="pt-2 text-left space-y-1.5">
                 <div className="text-[11px] uppercase font-semibold text-text-muted">
-                  Suggested Queries
+                  Try asking
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {SUGGESTED_QUERIES.map((sq) => (
@@ -277,16 +277,16 @@ export function AskProjectInterface({
                     {msg.fact && (
                       <div className="p-2.5 rounded bg-forest/10 border border-forest/20 text-text-primary dark:text-white space-y-1">
                         <div className="text-[10px] font-bold uppercase tracking-wider text-forest dark:text-[#88B094]">
-                          FACT (Direct Code Evidence)
+                          CONFIRMED FROM YOUR PROJECT
                         </div>
-                        <div>{msg.fact}</div>
+                        <div className="whitespace-pre-line">{msg.fact}</div>
                       </div>
                     )}
 
                     {msg.inference && (
                       <div className="p-2.5 rounded bg-copper/10 border border-copper/20 text-text-primary dark:text-white space-y-1">
                         <div className="text-[10px] font-bold uppercase tracking-wider text-copper dark:text-[#E08F6B]">
-                          INFERENCE (Derived Architecture Conclusion)
+                          BASED ON PROJECT STRUCTURE
                         </div>
                         <div>{msg.inference}</div>
                       </div>
@@ -295,7 +295,7 @@ export function AskProjectInterface({
                     {msg.unknown && (
                       <div className="p-2.5 rounded bg-surface border border-border dark:bg-[#121814] dark:border-border-dark text-text-muted space-y-1">
                         <div className="text-[10px] font-bold uppercase tracking-wider text-text-muted">
-                          UNKNOWN (Insufficient Repository Evidence)
+                          NOT FOUND IN THE PROJECT
                         </div>
                         <div>{msg.unknown}</div>
                       </div>
@@ -310,7 +310,7 @@ export function AskProjectInterface({
                     {msg.citations && msg.citations.length > 0 && (
                       <div className="pt-2 border-t border-border dark:border-border-dark space-y-1.5">
                         <div className="text-[10px] uppercase font-semibold text-text-muted">
-                          Verified Repository Citations ({msg.citations.length})
+                          Found in ({msg.citations.length})
                         </div>
                         <div className="flex flex-wrap gap-1.5">
                           {msg.citations.map((c, i) => (
@@ -335,7 +335,7 @@ export function AskProjectInterface({
           {loading && (
             <div className="flex items-center gap-2 text-xs text-text-muted p-2">
               <Loader2 className="w-4 h-4 text-forest animate-spin" />
-              <span>Querying verified codebase snapshot…</span>
+              <span>Searching your project…</span>
             </div>
           )}
         </div>
@@ -353,7 +353,7 @@ export function AskProjectInterface({
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Ask about architectural patterns, historical decisions, or dependencies…"
+              placeholder="Ask anything about your files, packages, structure, or history…"
               disabled={loading}
               className="flex-1 h-9 px-3 bg-surface border border-border rounded text-xs font-sans text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-forest dark:bg-[#151C17] dark:border-border-dark dark:text-white"
             />

@@ -148,14 +148,14 @@ export default function DashboardPage() {
       const data = await res.json();
 
       if (res.ok) {
-        setSyncStatusMessage(data.message || 'Repository successfully synchronized.');
+        setSyncStatusMessage(data.message || 'Project updated with latest changes.');
         setTimeout(() => setSyncStatusMessage(null), 4000);
         await fetchDashboardData(selectedProjectId);
       } else {
-        setAnalysisError(data.error || 'Failed to sync repository.');
+        setAnalysisError(data.error || 'Could not sync changes. Try syncing again.');
       }
     } catch (err: any) {
-      setAnalysisError(err?.message || 'Sync operation failed.');
+      setAnalysisError(err?.message || 'Could not sync project changes.');
     } finally {
       setIsRefreshing(false);
     }
@@ -175,12 +175,12 @@ export default function DashboardPage() {
       const data = await res.json();
 
       if (!res.ok) {
-        setAnalysisError(data.error || 'Repository analysis failed');
+        setAnalysisError(data.error || 'Could not finish analyzing this project. Please try again.');
       } else {
         await fetchDashboardData(id);
       }
     } catch (err: any) {
-      setAnalysisError(err?.message || 'Failed to trigger repository analysis');
+      setAnalysisError(err?.message || 'Unable to start project analysis right now.');
     } finally {
       setIsAnalyzing(false);
     }
@@ -209,7 +209,7 @@ export default function DashboardPage() {
       <div className="min-h-screen bg-ivory flex items-center justify-center font-sans text-xs text-text-muted dark:bg-[#0E1310]">
         <div className="flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-forest animate-ping" />
-          <span>Mounting MarrowNode Workstation…</span>
+          <span>Loading your project…</span>
         </div>
       </div>
     );
@@ -304,46 +304,46 @@ export default function DashboardPage() {
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4 font-sans">
                   <div className="p-3.5 rounded bg-surface border border-border dark:bg-[#151C17] dark:border-border-dark">
                     <div className="flex items-center justify-between text-text-muted mb-1">
-                      <span className="text-[11px] uppercase tracking-wider font-medium">Analyzed Files</span>
+                      <span className="text-[11px] uppercase tracking-wider font-medium">Files analyzed</span>
                       <FileCode2 className="w-3.5 h-3.5 text-forest" />
                     </div>
                     <div className="text-xl sm:text-2xl font-bold text-text-primary dark:text-white">
                       0
                     </div>
                     <div className="text-xs text-text-muted mt-1">
-                      No repository connected
+                      No project connected
                     </div>
                   </div>
 
                   <div className="p-3.5 rounded bg-surface border border-border dark:bg-[#151C17] dark:border-border-dark">
                     <div className="flex items-center justify-between text-text-muted mb-1">
-                      <span className="text-[11px] uppercase tracking-wider font-medium">Architecture Nodes</span>
+                      <span className="text-[11px] uppercase tracking-wider font-medium">Project areas</span>
                       <Network className="w-3.5 h-3.5 text-forest" />
                     </div>
                     <div className="text-xl sm:text-2xl font-bold text-text-primary dark:text-white">
                       0
                     </div>
                     <div className="text-xs text-text-muted mt-1">
-                      Topology map unavailable
+                      Project structure unavailable
                     </div>
                   </div>
 
                   <div className="p-3.5 rounded bg-surface border border-border dark:bg-[#151C17] dark:border-border-dark">
                     <div className="flex items-center justify-between text-text-muted mb-1">
-                      <span className="text-[11px] uppercase tracking-wider font-medium">Tracked Commits</span>
+                      <span className="text-[11px] uppercase tracking-wider font-medium">Recent commits</span>
                       <GitCommit className="w-3.5 h-3.5 text-copper" />
                     </div>
                     <div className="text-xl sm:text-2xl font-bold text-text-primary dark:text-white">
                       0
                     </div>
                     <div className="text-xs text-text-muted mt-1">
-                      No history indexed
+                      No development history yet
                     </div>
                   </div>
 
                   <div className="p-3.5 rounded bg-surface border border-border dark:bg-[#151C17] dark:border-border-dark">
                     <div className="flex items-center justify-between text-text-muted mb-1">
-                      <span className="text-[11px] uppercase tracking-wider font-medium">Evidence Provenance</span>
+                      <span className="text-[11px] uppercase tracking-wider font-medium">Project evidence</span>
                       <ShieldCheck className="w-3.5 h-3.5 text-forest" />
                     </div>
                     <div className="text-xl sm:text-2xl font-bold text-text-primary dark:text-white">
@@ -366,7 +366,7 @@ export default function DashboardPage() {
             {/* If project IS present and on overview */}
             {selectedProject && activeView === 'overview' ? (
               <div className="space-y-6 animate-in fade-in-50 duration-150">
-                {/* 1. Context Coverage (Mathematically Derived from Real Evidence) */}
+                {/* 1. Project Understanding Coverage */}
                 <ContextCoverageWidget
                   coverage={projectContext?.coverage || null}
                 />
@@ -377,10 +377,10 @@ export default function DashboardPage() {
                     <div className="space-y-0.5">
                       <div className="text-sm font-semibold text-text-primary dark:text-white flex items-center gap-2">
                         <span className="w-2 h-2 rounded-full bg-copper animate-pulse" />
-                        <span>Repository analysis not started</span>
+                        <span>Ready to analyze your project</span>
                       </div>
                       <p className="text-xs text-text-muted">
-                        Execute deterministic AST & manifest analysis to populate file structure, dependencies, and commit intelligence.
+                        Run analysis to explore your files, packages, project structure, and recent changes.
                       </p>
                     </div>
                     <Button
@@ -392,16 +392,16 @@ export default function DashboardPage() {
                       className="text-xs font-sans font-medium shrink-0"
                     >
                       <Play className="w-3.5 h-3.5 mr-1.5 fill-current" />
-                      Run Analysis Now
+                      Analyze project
                     </Button>
                   </div>
                 )}
 
-                {/* 2. Key Engineering Telemetry Cards (Real Data from Neon) */}
+                {/* 2. Key Project Summary Cards */}
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4 font-sans">
                   <div className="p-3.5 rounded bg-surface border border-border dark:bg-[#151C17] dark:border-border-dark">
                     <div className="flex items-center justify-between text-text-muted mb-1">
-                      <span className="text-[11px] uppercase tracking-wider font-medium">Source Files</span>
+                      <span className="text-[11px] uppercase tracking-wider font-medium">Files analyzed</span>
                       <FileCode2 className="w-3.5 h-3.5 text-forest" />
                     </div>
                     <div className="text-xl sm:text-2xl font-bold text-text-primary dark:text-white">
@@ -411,14 +411,14 @@ export default function DashboardPage() {
                     </div>
                     <div className="text-xs text-text-muted mt-1">
                       {projectContext?.coverage?.files
-                        ? `${projectContext.coverage.files.coveragePercent}% source coverage (${projectContext.coverage.files.discovered} discovered)`
-                        : (latestAnalysis ? `${latestAnalysis.filesAnalyzed} files indexed` : 'Analysis not available yet')}
+                        ? `${projectContext.coverage.files.coveragePercent}% of code files (${projectContext.coverage.files.discovered} total)`
+                        : (latestAnalysis ? `${latestAnalysis.filesAnalyzed} files analyzed` : 'Waiting for analysis')}
                     </div>
                   </div>
 
                   <div className="p-3.5 rounded bg-surface border border-border dark:bg-[#151C17] dark:border-border-dark">
                     <div className="flex items-center justify-between text-text-muted mb-1">
-                      <span className="text-[11px] uppercase tracking-wider font-medium">Import Linkages</span>
+                      <span className="text-[11px] uppercase tracking-wider font-medium">File connections</span>
                       <Network className="w-3.5 h-3.5 text-forest" />
                     </div>
                     <div className="text-xl sm:text-2xl font-bold text-text-primary dark:text-white">
@@ -428,27 +428,29 @@ export default function DashboardPage() {
                     </div>
                     <div className="text-xs text-text-muted mt-1">
                       {projectContext?.coverage?.imports
-                        ? `${projectContext.coverage.imports.resolutionPercent}% resolved (${projectContext.coverage.imports.unresolved} unlinked)`
-                        : (latestAnalysis ? `${latestAnalysis.dependenciesDetected ?? 0} dependencies` : 'Analysis not available yet')}
+                        ? `${projectContext.coverage.imports.resolutionPercent}% confirmed (${projectContext.coverage.imports.unresolved} unconfirmed)`
+                        : (latestAnalysis ? `${latestAnalysis.dependenciesDetected ?? 0} packages` : 'Waiting for analysis')}
                     </div>
                   </div>
 
                   <div className="p-3.5 rounded bg-surface border border-border dark:bg-[#151C17] dark:border-border-dark">
                     <div className="flex items-center justify-between text-text-muted mb-1">
-                      <span className="text-[11px] uppercase tracking-wider font-medium">Tracked Commits</span>
+                      <span className="text-[11px] uppercase tracking-wider font-medium">Recent commits</span>
                       <GitCommit className="w-3.5 h-3.5 text-copper" />
                     </div>
                     <div className="text-xl sm:text-2xl font-bold text-text-primary dark:text-white">
                       {projectContext?.coverage?.git?.commitsIndexed ?? (latestAnalysis?.commitsAnalyzed ?? 0)}
                     </div>
                     <div className="text-xs text-text-muted mt-1">
-                      {projectContext?.coverage?.git?.historyScope ?? (latestAnalysis ? 'Indexed with author blame' : 'Analysis not available yet')}
+                      {projectContext?.coverage?.git?.commitsIndexed
+                        ? `Recent commits analyzed on ${selectedProject.defaultBranch || 'main'}`
+                        : (latestAnalysis ? 'Commit history analyzed' : 'Waiting for analysis')}
                     </div>
                   </div>
 
                   <div className="p-3.5 rounded bg-surface border border-border dark:bg-[#151C17] dark:border-border-dark">
                     <div className="flex items-center justify-between text-text-muted mb-1">
-                      <span className="text-[11px] uppercase tracking-wider font-medium">Evidence Provenance</span>
+                      <span className="text-[11px] uppercase tracking-wider font-medium">Project evidence</span>
                       <ShieldCheck className="w-3.5 h-3.5 text-forest" />
                     </div>
                     <div className="text-xl sm:text-2xl font-bold text-text-primary dark:text-white">
@@ -456,13 +458,15 @@ export default function DashboardPage() {
                     </div>
                     <div className="text-xs text-text-muted mt-1">
                       {projectContext?.coverage?.documentation
-                        ? `${projectContext.coverage.documentation.filesDetected} doc artifacts detected`
-                        : 'Verified citations & AST evidence'}
+                        ? projectContext.coverage.documentation.filesDetected > 0
+                          ? `${projectContext.coverage.documentation.filesDetected} documentation file(s) found`
+                          : 'No documentation files found'
+                        : 'Files, commits, and packages'}
                     </div>
                   </div>
                 </div>
 
-                {/* 3. Central Intelligence Area */}
+                {/* 3. Ask MarrowNode Panel */}
                 <ProjectIntelligencePanel
                   projectId={selectedProject.id}
                   hasAnalyzedProject={latestAnalysis && latestAnalysis.status === 'COMPLETED'}
@@ -471,14 +475,14 @@ export default function DashboardPage() {
 
                 {/* 4. Two-Column Dashboard Overview Widgets */}
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                  {/* Left: Architecture Quick View */}
+                  {/* Left: Project Structure Preview */}
                   <div className="lg:col-span-7">
                     <Card className="h-full flex flex-col justify-between font-sans">
                       <CardHeader className="bg-surface-subtle dark:bg-[#1A221D]">
                         <div className="flex items-center justify-between w-full">
                           <div className="flex items-center gap-2">
                             <Network className="w-4 h-4 text-forest dark:text-[#88B094]" />
-                            <CardTitle>Topology Map Preview</CardTitle>
+                            <CardTitle>Project Structure</CardTitle>
                           </div>
                           <Button
                             variant="outline"
@@ -486,7 +490,7 @@ export default function DashboardPage() {
                             onClick={() => setActiveView('architecture')}
                             className="text-xs font-sans font-medium"
                           >
-                            <span>Open Graph</span>
+                            <span>See connections</span>
                             <ArrowRight className="w-3.5 h-3.5 ml-1" />
                           </Button>
                         </div>
@@ -495,21 +499,21 @@ export default function DashboardPage() {
                       <CardContent className="p-6 text-center space-y-2">
                         <div className="text-xs text-text-muted">
                           {latestAnalysis?.status === 'COMPLETED'
-                            ? `Architecture topology mapped across ${latestAnalysis.architectureNodes || 0} module components.`
-                            : 'Architecture map unavailable. Run repository analysis to generate the topology map.'}
+                            ? `Found ${latestAnalysis.architectureNodes || 0} connected areas across your project.`
+                            : 'Run analysis to see how the parts of your project connect.'}
                         </div>
                       </CardContent>
                     </Card>
                   </div>
 
-                  {/* Right: Recent Timeline Milestones */}
+                  {/* Right: Recent Development History */}
                   <div className="lg:col-span-5">
                     <Card className="h-full flex flex-col justify-between font-sans">
                       <CardHeader className="bg-surface-subtle dark:bg-[#1A221D]">
                         <div className="flex items-center justify-between w-full">
                           <div className="flex items-center gap-2">
                             <GitCommit className="w-4 h-4 text-copper dark:text-[#E08F6B]" />
-                            <CardTitle>Recent Commit Milestones</CardTitle>
+                            <CardTitle>Development History</CardTitle>
                           </div>
                           <Button
                             variant="outline"
@@ -517,7 +521,7 @@ export default function DashboardPage() {
                             onClick={() => setActiveView('timeline')}
                             className="text-xs font-sans font-medium"
                           >
-                            <span>Timeline</span>
+                            <span>View history</span>
                             <ArrowRight className="w-3.5 h-3.5 ml-1" />
                           </Button>
                         </div>
@@ -526,8 +530,8 @@ export default function DashboardPage() {
                       <CardContent className="p-6 text-center space-y-2">
                         <div className="text-xs text-text-muted">
                           {latestAnalysis?.status === 'COMPLETED'
-                            ? `Indexed ${latestAnalysis.commitsAnalyzed || 0} commits along ${selectedProject.defaultBranch || 'main'}.`
-                            : 'No development history available yet.'}
+                            ? `Reviewed ${latestAnalysis.commitsAnalyzed || 0} recent commits on ${selectedProject.defaultBranch || 'main'}.`
+                            : 'No development history analyzed yet.'}
                         </div>
                       </CardContent>
                     </Card>

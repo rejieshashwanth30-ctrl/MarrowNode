@@ -70,14 +70,14 @@ export default function OnboardingPage() {
     },
     {
       id: 'workers',
-      label: 'Architecture Parser Allocation',
-      detail: 'Running deterministic manifest & AST symbol analysis…',
+      label: 'Code & Package Analysis',
+      detail: 'Reading project files, packages, and connections…',
       status: 'pending',
     },
     {
       id: 'ready',
-      label: 'Project Context Ready',
-      detail: 'Workstation context initialized and ready for codebase inspection.',
+      label: 'Project Ready',
+      detail: 'Your project is ready to explore.',
       status: 'pending',
     },
   ]);
@@ -312,7 +312,7 @@ export default function OnboardingPage() {
                 </div>
                 <div className="flex items-center gap-2 text-text-secondary dark:text-[#A7AFA9]">
                   <CheckCircle2 className="w-3.5 h-3.5 text-forest" />
-                  <span>Repository tree & AST symbol inspection</span>
+                  <span>Project files and folder structure</span>
                 </div>
                 <div className="flex items-center gap-2 text-text-secondary dark:text-[#A7AFA9]">
                   <CheckCircle2 className="w-3.5 h-3.5 text-forest" />
@@ -552,12 +552,12 @@ export default function OnboardingPage() {
             <CardContent className="p-6 sm:p-8 space-y-6 font-sans">
               <div className="text-center space-y-1">
                 <h3 className="text-lg font-bold text-text-primary dark:text-white font-sans">
-                  {isCompleted ? 'Project Initialized in Neon' : 'Analyzing Codebase & History'}
+                  {isCompleted ? 'Project Ready in MarrowNode' : 'Analyzing Code & History'}
                 </h3>
                 <p className="text-xs text-text-muted font-sans">
                   {isCompleted
-                    ? 'Deterministic AST, manifests, and commit history indexed. Ready for workstation.'
-                    : 'Extracting file tree, packages, language breakdown, and commit records…'}
+                    ? 'Files, packages, and commit history analyzed. Ready to open your dashboard.'
+                    : 'Reading files, packages, language breakdown, and commit records…'}
                 </p>
               </div>
 
@@ -613,7 +613,7 @@ export default function OnboardingPage() {
                   onClick={() => router.push('/dashboard')}
                   className="font-sans font-medium text-xs w-full max-w-sm h-10"
                 >
-                  <span>{isCompleted ? 'Enter MarrowNode Workstation' : 'Configuring…'}</span>
+                  <span>{isCompleted ? 'Open Project Dashboard' : 'Setting up…'}</span>
                   {isCompleted && <ArrowRight className="w-4 h-4 ml-2" />}
                 </Button>
               </div>

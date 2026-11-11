@@ -202,7 +202,7 @@ export default function LandingPage() {
 
             <Link href="/dashboard" className="w-full sm:w-auto">
               <Button variant="secondary" size="lg" className="w-full sm:w-auto font-sans font-medium text-xs sm:text-sm h-10 px-5">
-                <span>Enter Workstation</span>
+                <span>Open Dashboard</span>
                 <ArrowRight className="w-4 h-4 ml-2 text-forest" />
               </Button>
             </Link>
@@ -228,7 +228,7 @@ export default function LandingPage() {
                 <ArrowRight className="w-3.5 h-3.5 text-border-strong hidden lg:inline" />
               </div>
               <p className="text-xs text-text-secondary leading-snug dark:text-[#959D96] font-sans">
-                Structural AST parsing of symbols, types, exports, and directory layout.
+                Reads your code files, symbols, exports, and folder organization.
               </p>
             </div>
 
@@ -270,13 +270,13 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Realistic Workstation Preview */}
+      {/* Realistic Project Preview */}
       <section className="py-10 sm:py-14 px-4 sm:px-6 bg-ivory/60 dark:bg-[#0E1310] border-b border-border dark:border-border-dark font-sans">
         <div className="max-w-6xl mx-auto space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <span className="text-xs uppercase tracking-wider text-text-muted font-medium block mb-0.5">
-                Engineering Workstation Preview
+                Interactive Project Preview
               </span>
               <h2 className="text-base sm:text-lg font-bold tracking-tight text-text-primary dark:text-white font-sans">
                 marrownode-oss / core-engine
@@ -286,9 +286,9 @@ export default function LandingPage() {
             {/* Interactive Preview Switcher Tabs */}
             <div className="flex items-center gap-1.5 p-1 bg-surface border border-border rounded text-xs font-sans dark:bg-[#151C17] dark:border-border-dark self-start sm:self-auto">
               {[
-                { id: 'overview', label: 'Context Coverage' },
-                { id: 'intelligence', label: 'Project Intelligence' },
-                { id: 'architecture', label: 'Architecture Graph' },
+                { id: 'overview', label: 'Project Understanding' },
+                { id: 'intelligence', label: 'Ask MarrowNode' },
+                { id: 'architecture', label: 'Project Structure' },
               ].map((t) => (
                 <button
                   key={t.id}
@@ -305,7 +305,7 @@ export default function LandingPage() {
             </div>
           </div>
 
-          {/* Interactive Workstation Mock Window */}
+          {/* Interactive Preview Window */}
           <div className="bg-surface border border-border rounded shadow-card overflow-hidden dark:bg-[#151C17] dark:border-border-dark font-sans">
             {/* Window Titlebar */}
             <div className="h-9 px-4 border-b border-border bg-surface-subtle flex items-center justify-between text-xs text-text-muted dark:bg-[#1A221D] dark:border-border-dark font-sans">
@@ -314,11 +314,11 @@ export default function LandingPage() {
                 <span className="w-2.5 h-2.5 rounded-full bg-border-strong inline-block" />
                 <span className="w-2.5 h-2.5 rounded-full bg-border-strong inline-block" />
                 <span className="ml-2 font-medium text-text-primary dark:text-white font-sans">
-                  MarrowNode Console — main branch
+                  MarrowNode — main branch
                 </span>
               </div>
               <Badge variant="success" size="xs" className="font-sans font-medium">
-                Analyzed 14m ago · 87% Context Coverage
+                Analyzed 14m ago · 87% Project Understanding
               </Badge>
             </div>
 
@@ -328,7 +328,7 @@ export default function LandingPage() {
                 <div className="space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="p-4 rounded bg-surface border border-border dark:bg-[#18201B] dark:border-border-dark">
-                      <span className="text-[11px] uppercase tracking-wider text-text-muted font-medium">Total Analysis Coverage</span>
+                      <span className="text-[11px] uppercase tracking-wider text-text-muted font-medium">Project Understanding</span>
                       <div className="text-3xl font-bold text-text-primary dark:text-white mt-1 font-sans">
                         87%
                       </div>
@@ -336,12 +336,12 @@ export default function LandingPage() {
                         <div className="h-full bg-forest w-[87%]" />
                       </div>
                       <span className="text-xs text-text-muted mt-2 block font-sans">
-                        Deterministic AST indexing across 142 source files
+                        142 code files analyzed across this project
                       </span>
                     </div>
 
                     <div className="p-4 rounded bg-surface border border-border dark:bg-[#18201B] dark:border-border-dark">
-                      <span className="text-[11px] uppercase tracking-wider text-text-muted font-medium">Git Blame Memory</span>
+                      <span className="text-[11px] uppercase tracking-wider text-text-muted font-medium">Development History</span>
                       <div className="text-3xl font-bold text-copper mt-1 font-sans">
                         91%
                       </div>
@@ -349,12 +349,12 @@ export default function LandingPage() {
                         <div className="h-full bg-copper w-[91%]" />
                       </div>
                       <span className="text-xs text-text-muted mt-2 block font-sans">
-                        1,420 commits indexed with PR intent references
+                        1,420 commits reviewed for recent changes
                       </span>
                     </div>
 
                     <div className="p-4 rounded bg-surface border border-border dark:bg-[#18201B] dark:border-border-dark">
-                      <span className="text-[11px] uppercase tracking-wider text-text-muted font-medium">Architecture Mapping</span>
+                      <span className="text-[11px] uppercase tracking-wider text-text-muted font-medium">Project Structure</span>
                       <div className="text-3xl font-bold text-forest dark:text-[#88B094] mt-1 font-sans">
                         84%
                       </div>
@@ -362,14 +362,14 @@ export default function LandingPage() {
                         <div className="h-full bg-forest w-[84%]" />
                       </div>
                       <span className="text-xs text-text-muted mt-2 block font-sans">
-                        7 domain layers and 48 directional bounds
+                        7 project areas and 48 file connections
                       </span>
                     </div>
                   </div>
 
                   <div className="p-3 bg-surface border border-border rounded flex items-center justify-between dark:bg-[#18201B] dark:border-border-dark text-xs font-sans">
                     <span className="text-text-muted">
-                      Latest verified milestone: <strong className="text-text-primary dark:text-white font-medium">Security middleware changed</strong>
+                      Recent important change: <strong className="text-text-primary dark:text-white font-medium">Security middleware updated</strong>
                     </span>
                     <span className="text-copper font-mono">commit #142 (David Ross)</span>
                   </div>
@@ -380,17 +380,17 @@ export default function LandingPage() {
                 <div className="p-4 rounded bg-surface border border-border space-y-3 dark:bg-[#18201B] dark:border-border-dark font-sans">
                   <div className="flex items-center justify-between border-b border-border pb-2 dark:border-border-dark">
                     <span className="text-xs sm:text-sm font-semibold text-text-primary dark:text-white font-sans">
-                      “How does authentication work?”
+                      “How does login and authentication work?”
                     </span>
-                    <Badge variant="success" size="xs" className="font-sans font-medium">Confidence: 98%</Badge>
+                    <Badge variant="success" size="xs" className="font-sans font-medium">Confirmed from project</Badge>
                   </div>
 
                   <p className="text-xs sm:text-sm leading-relaxed text-text-secondary dark:text-[#A7AFA9] font-sans">
-                    Authentication is handled through the auth service and session middleware. Login requests are processed through the authentication route, with session state subsequently checked by protected application routes.
+                    Login is handled through the authentication service and session checks. Login requests go through the auth route, and protected pages verify the user session automatically.
                   </p>
 
                   <div className="pt-2 border-t border-border flex flex-wrap gap-2 dark:border-border-dark font-sans items-center">
-                    <span className="text-[11px] uppercase tracking-wider text-text-muted font-medium">Evidence:</span>
+                    <span className="text-[11px] uppercase tracking-wider text-text-muted font-medium">Found in:</span>
                     <span className="text-xs font-mono px-2 py-0.5 rounded bg-surface-subtle border border-border dark:bg-[#141A16] dark:border-border-dark">
                       src/auth/service.ts
                     </span>
@@ -407,10 +407,10 @@ export default function LandingPage() {
               {activePreviewTab === 'architecture' && (
                 <div className="p-4 rounded bg-surface border border-border space-y-3 dark:bg-[#18201B] dark:border-border-dark font-sans">
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs font-sans">
-                    {['App Router', 'Components', 'Auth Boundary', 'API Endpoints', 'Services Core', 'PostgreSQL DB', 'External APIs'].map((node, i) => (
+                    {['App Routes', 'UI Components', 'Login & Auth', 'API Endpoints', 'Core Logic', 'Database', 'External Services'].map((node, i) => (
                       <div key={i} className="p-2.5 rounded bg-surface-subtle border border-border dark:bg-[#141A16] dark:border-border-dark">
                         <span className="font-semibold text-text-primary dark:text-white block font-sans">{node}</span>
-                        <span className="text-xs text-text-muted font-sans">Bound to AST exports</span>
+                        <span className="text-xs text-text-muted font-sans">Connected via imports</span>
                       </div>
                     ))}
                   </div>
@@ -421,10 +421,10 @@ export default function LandingPage() {
             {/* Preview Footer Callout */}
             <div className="p-3 bg-surface-subtle border-t border-border flex items-center justify-between text-xs dark:bg-[#1A221D] dark:border-border-dark font-sans">
               <span className="text-text-muted">
-                Zero AI hallucination · Evidence-oriented · Designed for engineering workstations
+                Clear explanations · Backed by your files &amp; commits · Built for developers &amp; students
               </span>
               <Link href="/dashboard" className="text-forest hover:underline font-semibold flex items-center gap-1">
-                <span>Launch Interactive Dashboard</span>
+                <span>Open Interactive Dashboard</span>
                 <ArrowRight className="w-3.5 h-3.5" />
               </Link>
             </div>
@@ -447,16 +447,16 @@ export default function LandingPage() {
           </div>
 
           <p className="text-sm sm:text-base text-text-secondary leading-relaxed dark:text-[#A7AFA9] font-sans">
-            MarrowNode is a developer project memory and codebase intelligence platform that helps developers understand how their software is structured, how it evolved, and why important technical decisions exist. It brings codebase structure, architecture, dependencies, development history, and project evidence into one understandable context layer.
+            MarrowNode helps you open any project and immediately understand what it contains, how its parts connect, what changed recently, and what could be affected by edits. It combines project structure, packages, development history, and real code evidence in one clear place.
           </p>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
             <div className="p-4 rounded bg-surface-subtle border border-border dark:bg-[#18201B] dark:border-border-dark space-y-1">
               <span className="text-xs font-semibold text-text-primary dark:text-white block font-sans">
-                Structure & Coupling
+                How Files Connect
               </span>
               <p className="text-xs text-text-muted leading-relaxed font-sans">
-                AST symbol tables and import relationships map boundaries across files.
+                Import connections show how files and project areas depend on one another.
               </p>
             </div>
 

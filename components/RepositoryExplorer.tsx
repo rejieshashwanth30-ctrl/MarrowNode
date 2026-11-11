@@ -179,7 +179,7 @@ export function RepositoryExplorer({
           <div className="flex items-center gap-2">
             <FolderTree className="w-4 h-4 text-forest dark:text-[#88B094]" />
             <span className="text-xs sm:text-sm font-semibold text-text-primary dark:text-white font-sans">
-              Repository Module Explorer
+              Project Files
             </span>
           </div>
         </CardHeader>
@@ -189,10 +189,10 @@ export function RepositoryExplorer({
           </div>
           <div className="space-y-1 max-w-sm">
             <h3 className="text-sm sm:text-base font-semibold text-text-primary dark:text-white">
-              Indexing Repository Tree…
+              Reading project files…
             </h3>
             <p className="text-xs text-text-muted leading-relaxed">
-              Analyzing repository filesystem tree, module boundaries, and AST symbols. This view will update automatically.
+              Scanning folders, code files, and connections in your project. This view will update automatically.
             </p>
           </div>
         </CardContent>
@@ -208,7 +208,7 @@ export function RepositoryExplorer({
           <div className="flex items-center gap-2">
             <FolderTree className="w-4 h-4 text-forest dark:text-[#88B094]" />
             <span className="text-xs sm:text-sm font-semibold text-text-primary dark:text-white font-sans">
-              Repository Module Explorer
+              Project Files
             </span>
           </div>
         </CardHeader>
@@ -218,12 +218,12 @@ export function RepositoryExplorer({
           </div>
           <div className="space-y-1 max-w-sm">
             <h3 className="text-sm sm:text-base font-semibold text-text-primary dark:text-white">
-              {hasProject ? 'Repository Analysis Needed' : 'No repository connected'}
+              {hasProject ? 'Ready to scan your files' : 'No project connected'}
             </h3>
             <p className="text-xs text-text-muted leading-relaxed">
               {hasProject
-                ? 'Your repository is connected. Run analysis from the Overview tab to index directory structure and symbols.'
-                : 'Connect a GitHub repository to explore directory structure, symbol tables, and code modules.'}
+                ? 'Run analysis from Overview to browse files and see what each part does.'
+                : 'Connect a GitHub repository to browse your project files and understand how they are organized.'}
             </p>
           </div>
           {!hasProject && (
@@ -234,7 +234,7 @@ export function RepositoryExplorer({
                 onClick={onConnectRepo}
                 className="text-xs font-sans font-medium"
               >
-                Connect GitHub Repository
+                Choose repository
               </Button>
             </div>
           )}
@@ -248,14 +248,19 @@ export function RepositoryExplorer({
     <Card className="overflow-hidden font-sans">
       <CardHeader className="bg-surface-subtle dark:bg-[#1A221D] p-3 sm:p-4 border-b border-border dark:border-border-dark">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 w-full">
-          <div className="flex items-center gap-2">
-            <FolderTree className="w-4 h-4 text-forest dark:text-[#88B094]" />
-            <span className="text-xs sm:text-sm font-semibold text-text-primary dark:text-white">
-              Repository Module Explorer
-            </span>
-            <Badge variant="neutral" size="xs" className="font-mono text-[10px]">
-              {allFiles.length} files
-            </Badge>
+          <div>
+            <div className="flex items-center gap-2">
+              <FolderTree className="w-4 h-4 text-forest dark:text-[#88B094]" />
+              <span className="text-xs sm:text-sm font-semibold text-text-primary dark:text-white">
+                Project Files
+              </span>
+              <Badge variant="neutral" size="xs" className="font-mono text-[10px]">
+                {allFiles.length} files analyzed
+              </Badge>
+            </div>
+            <p className="text-xs text-text-muted mt-0.5">
+              Browse the files and folders MarrowNode analyzed.
+            </p>
           </div>
 
           <div className="relative w-full sm:w-64">
@@ -264,7 +269,7 @@ export function RepositoryExplorer({
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search files or paths…"
+              placeholder="Search files and folders…"
               className="w-full h-8 pl-8 pr-3 bg-surface border border-border rounded text-xs font-sans text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-forest dark:bg-[#151C17] dark:border-border-dark dark:text-white"
             />
           </div>
@@ -332,7 +337,7 @@ export function RepositoryExplorer({
                     className="text-xs font-sans gap-1 shrink-0"
                   >
                     {copied ? <Check className="w-3.5 h-3.5 text-forest" /> : <Copy className="w-3.5 h-3.5" />}
-                    <span>{copied ? 'Copied' : 'Copy Path'}</span>
+                    <span>{copied ? 'Copied' : 'Copy path'}</span>
                   </Button>
                 </div>
 
@@ -340,47 +345,57 @@ export function RepositoryExplorer({
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 font-sans text-xs">
                   <div className="p-3 rounded bg-surface-subtle dark:bg-[#1A221D] border border-border dark:border-border-dark">
                     <span className="text-[10px] uppercase font-semibold text-text-muted block mb-1">
-                      File Size
+                      File size
                     </span>
                     <span className="font-mono text-text-primary dark:text-white">
-                      {selectedNode.size || 'Standard blob'}
+                      {selectedNode.size || 'Standard file'}
                     </span>
                   </div>
 
                   <div className="p-3 rounded bg-surface-subtle dark:bg-[#1A221D] border border-border dark:border-border-dark">
                     <span className="text-[10px] uppercase font-semibold text-text-muted block mb-1">
-                      Module Scope
+                      Part of
                     </span>
                     <span className="font-mono text-text-primary dark:text-white truncate block">
-                      {selectedNode.path.split('/')[0] || 'root'}
+                      {selectedNode.path.includes('/') ? selectedNode.path.split('/')[0] : 'Project root'}
                     </span>
                   </div>
 
                   <div className="p-3 rounded bg-surface-subtle dark:bg-[#1A221D] border border-border dark:border-border-dark col-span-2 sm:col-span-1">
                     <span className="text-[10px] uppercase font-semibold text-text-muted block mb-1">
-                      Indexed State
+                      Analysis
                     </span>
                     <span className="text-forest dark:text-[#88B094] font-medium flex items-center gap-1">
                       <span className="w-1.5 h-1.5 rounded-full bg-forest dark:bg-[#88B094]" />
-                      AST Parsed
+                      Code structure analyzed
                     </span>
                   </div>
                 </div>
 
-                <div className="p-3.5 rounded bg-surface-subtle/50 border border-border dark:bg-[#121814] dark:border-border-dark space-y-1.5 text-xs text-text-muted">
+                <div className="p-3.5 rounded bg-surface-subtle/50 border border-border dark:bg-[#121814] dark:border-border-dark space-y-2 text-xs text-text-muted">
                   <div className="font-medium text-text-primary dark:text-white flex items-center gap-1.5">
                     <HardDrive className="w-3.5 h-3.5 text-forest" />
-                    <span>Workstation Provenance</span>
+                    <span>Why this information is shown</span>
                   </div>
                   <p className="leading-relaxed">
-                    This file is tracked as part of your active repository analysis. Downstream impact, symbol references, and architecture topology are indexed against this path.
+                    This file is part of your project analysis. MarrowNode uses it to understand the project structure, file connections, and what could be affected by changes.
                   </p>
+                  <details className="pt-1 border-t border-border/60 dark:border-border-dark">
+                    <summary className="cursor-pointer font-medium hover:text-text-primary dark:hover:text-white select-none text-[11px]">
+                      Technical details
+                    </summary>
+                    <div className="mt-1.5 font-mono text-[11px] space-y-0.5 text-text-muted">
+                      <div>Path: {selectedNode.path}</div>
+                      <div>Module Scope: {selectedNode.path.split('/')[0] || 'root'}</div>
+                      <div>Indexed State: AST Parsed (Static Analysis)</div>
+                    </div>
+                  </details>
                 </div>
               </div>
             ) : (
               <div className="flex flex-col items-center justify-center text-center space-y-2 h-full text-text-muted py-12">
                 <FileCode className="w-8 h-8 opacity-40" />
-                <span className="text-xs">Select a file from the explorer to view module details.</span>
+                <span className="text-xs">Select any file on the left to see its details.</span>
               </div>
             )}
           </div>
