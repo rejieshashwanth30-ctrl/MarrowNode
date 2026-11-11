@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, getOrCreateCurrentProfile, AuthError } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { DependencyGraphEngine, DependencyEdge } from '@/lib/analysis/graph-engine';
+import { telemetry } from '@/lib/observability/timing';
+
+// In-memory cache for instantiated graph engines per project analysis
+const engineCache = new Map<string, DependencyGraphEngine>();
 
 export async function GET(
   request: NextRequest,
@@ -45,17 +49,28 @@ export async function GET(
       );
     }
 
-    const archEvidence = project.evidences[0];
-    const archMeta = (archEvidence?.metadata as any) || {};
     const latestAnalysis = project.analyses[0];
-    const summaryJson = (latestAnalysis?.summaryJson as any) || {};
+    const engineKey = `${projectId}:${latestAnalysis?.id || 'none'}`;
+    let graphEngine = engineCache.get(engineKey);
 
-    // Retrieve file-level dependency edges
-    const dependencyEdges: DependencyEdge[] =
-      archMeta.dependencyEdges || summaryJson.dependencyEdges || [];
+    if (!graphEngine) {
+      const archEvidence = project.evidences[0];
+      const archMeta = (archEvidence?.metadata as any) || {};
+      const summaryJson = (latestAnalysis?.summaryJson as any) || {};
 
-    const graphEngine = new DependencyGraphEngine(dependencyEdges);
-    const result = graphEngine.calculateBlastRadius(target, changeType);
+      // Retrieve file-level dependency edges
+      const dependencyEdges: DependencyEdge[] =
+        archMeta.dependencyEdges || summaryJson.dependencyEdges || [];
+
+      graphEngine = new DependencyGraphEngine(dependencyEdges);
+      engineCache.set(engineKey, graphEngine);
+    }
+
+    const result = await telemetry.measure(
+      'impact.calculate_blast_radius',
+      async () => graphEngine!.calculateBlastRadius(target, changeType),
+      { projectId, analysisId: latestAnalysis?.id }
+    );
 
     return NextResponse.json({
       success: true,

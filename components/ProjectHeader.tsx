@@ -33,6 +33,7 @@ interface ProjectHeaderProps {
     analysisStatus?: string;
     lastAnalyzedAt?: string | Date | null;
   } | null;
+  freshness?: 'CURRENT' | 'STALE' | 'ANALYZING' | 'PARTIAL' | 'FAILED';
   onRefresh?: () => void;
   isRefreshing?: boolean;
   onAnalyze?: () => void;
@@ -42,6 +43,7 @@ interface ProjectHeaderProps {
 
 export function ProjectHeader({
   project,
+  freshness,
   onRefresh,
   isRefreshing = false,
   onAnalyze,
@@ -131,6 +133,18 @@ export function ProjectHeader({
                     : project.analysisStatus || 'PENDING'}
                 </span>
               </Badge>
+
+              {freshness === 'STALE' && (
+                <Badge variant="copper" size="sm" className="font-sans font-medium text-[10px]">
+                  STALE (New Commits)
+                </Badge>
+              )}
+
+              {freshness === 'PARTIAL' && (
+                <Badge variant="neutral" size="sm" className="font-sans font-medium text-[10px]">
+                  PARTIAL SCOPE
+                </Badge>
+              )}
 
               <Badge variant="neutral" size="sm" className="gap-1 font-sans font-medium">
                 <GitBranch className="w-3 h-3 text-text-muted" />

@@ -1,6 +1,8 @@
 import { prisma } from '@/lib/prisma';
 import { requireAuth, getOrCreateCurrentProfile, AuthError } from '@/lib/auth';
 import type { AnalysisStatus } from '@prisma/client';
+import { telemetry } from '@/lib/observability/timing';
+import { invalidateProjectContextCache } from '@/lib/services/project-context';
 
 export interface CreateProjectInput {
   name: string;
@@ -129,6 +131,8 @@ export async function setActiveUserProject(projectId: string) {
       data: { isActive: true },
     }),
   ]);
+
+  invalidateProjectContextCache(projectId);
 
   return getUserProject(projectId);
 }

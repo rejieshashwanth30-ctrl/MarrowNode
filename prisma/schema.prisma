@@ -92,6 +92,7 @@ model Project {
   evidences            Evidence[]
 
   @@index([ownerId])
+  @@index([ownerId, isActive])
   @@map("projects")
   @@schema("marrownode")
 }
@@ -150,6 +151,7 @@ model Analysis {
   updatedAt            DateTime       @updatedAt
 
   @@index([projectId])
+  @@index([projectId, createdAt])
   @@map("analyses")
   @@schema("marrownode")
 }
@@ -171,6 +173,7 @@ model Evidence {
   createdAt   DateTime @default(now())
 
   @@index([projectId])
+  @@index([projectId, type])
   @@map("evidences")
   @@schema("marrownode")
 }

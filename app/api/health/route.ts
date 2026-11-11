@@ -4,6 +4,8 @@ import { createClient } from '@/utils/supabase/server';
 import { getSupabaseUrl } from '@/utils/supabase/config';
 import { getAppOrigin } from '@/lib/origin';
 import { ensureMarrowNodeSchema } from '@/lib/db/init';
+import { telemetry } from '@/lib/observability/timing';
+import { githubCache } from '@/lib/github/client';
 
 export const dynamic = 'force-dynamic';
 
@@ -128,6 +130,12 @@ export async function GET() {
   } catch (err: any) {
     responseData.services.supabaseAuth.error = 'Authentication service unreachable';
   }
+
+  responseData.performance = {
+    summary: telemetry.getSummary(),
+    recentCount: telemetry.getRecent().length,
+    githubCacheSize: githubCache.size(),
+  };
 
   const allTablesOk = Object.values(responseData.tables).every(Boolean);
   const allColumnsOk = responseData.columns ? Object.values(responseData.columns).every(Boolean) : true;

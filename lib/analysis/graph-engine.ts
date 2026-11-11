@@ -6,6 +6,7 @@ export interface DependencyEdge {
   symbols?: string[];
   relationship?: string;
   confidence?: number;
+  provenance?: any;
 }
 
 export interface BlastRadiusResult {

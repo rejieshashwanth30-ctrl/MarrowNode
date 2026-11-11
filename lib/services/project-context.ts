@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma';
 import { getOrCreateCurrentProfile, AuthError } from '@/lib/auth';
 import { getActiveUserProject } from '@/lib/services/projects';
+import { telemetry } from '@/lib/observability/timing';
 import type {
   FileTreeNode,
   ArchitectureNode,
@@ -10,6 +11,31 @@ import type {
   EvidenceCategory,
   AnalysisCoverage,
 } from '@/types';
+
+// In-memory workstation context cache with TTL
+// Keyed strictly by `${userId}:${projectId}:${latestAnalysisId || 'none'}`
+interface CachedWorkstationContext {
+  context: ProjectWorkstationContext;
+  expiresAt: number;
+}
+
+const contextCache = new Map<string, CachedWorkstationContext>();
+const CONTEXT_CACHE_TTL_MS = 3 * 60 * 1000; // 3 minutes
+
+/**
+ * Invalidate cached workstation context for a project or all projects.
+ */
+export function invalidateProjectContextCache(projectId?: string) {
+  if (!projectId) {
+    contextCache.clear();
+    return;
+  }
+  for (const key of Array.from(contextCache.keys())) {
+    if (key.includes(`:${projectId}:`)) {
+      contextCache.delete(key);
+    }
+  }
+}
 
 export interface ProjectWorkstationContext {
   project: {
@@ -36,6 +62,12 @@ export interface ProjectWorkstationContext {
   latestAnalysis: {
     id: string;
     status: string;
+    freshness: 'CURRENT' | 'STALE' | 'ANALYZING' | 'PARTIAL' | 'FAILED';
+    commitSha: string | null;
+    branch: string | null;
+    analyzerVersion: string | null;
+    coverage: number | null;
+    createdAt: Date | null;
     filesAnalyzed: number | null;
     commitsAnalyzed: number | null;
     dependenciesDetected: number | null;
@@ -149,26 +181,48 @@ export async function resolveActiveProjectContext(
  * Strictly verifies ownership via authenticated profile.
  */
 export async function getProjectWorkstationContext(
-  projectId: string
+  projectId: string,
+  options: { forceFresh?: boolean } = {}
 ): Promise<ProjectWorkstationContext> {
   const profile = await getOrCreateCurrentProfile();
 
-  const project = await prisma.project.findFirst({
-    where: {
-      id: projectId,
-      ownerId: profile.id,
-    },
-    include: {
-      repository: true,
-      analyses: {
-        orderBy: { createdAt: 'desc' },
-        take: 1,
-      },
-      evidences: {
-        orderBy: { createdAt: 'desc' },
-      },
-    },
-  });
+  // 1. Check in-memory workstation context cache (isolated by profile.id)
+  if (!options.forceFresh) {
+    for (const [key, cached] of Array.from(contextCache.entries())) {
+      if (key.startsWith(`${profile.id}:${projectId}:`) && Date.now() < cached.expiresAt) {
+        telemetry.record({
+          operation: 'project_context.cache_hit',
+          durationMs: 0,
+          projectId,
+          cacheHit: true,
+          status: 'success',
+        });
+        return cached.context;
+      }
+    }
+  }
+
+  const project = await telemetry.measure(
+    'database.fetch_project_evidences',
+    () =>
+      prisma.project.findFirst({
+        where: {
+          id: projectId,
+          ownerId: profile.id,
+        },
+        include: {
+          repository: true,
+          analyses: {
+            orderBy: { createdAt: 'desc' },
+            take: 1,
+          },
+          evidences: {
+            orderBy: { createdAt: 'desc' },
+          },
+        },
+      }),
+    { projectId }
+  );
 
   if (!project) {
     throw new AuthError('Project not found or access denied', 404);
@@ -470,7 +524,31 @@ export async function getProjectWorkstationContext(
     };
   }
 
-  return {
+  // 13. Freshness & Stale Detection
+  let freshness: 'CURRENT' | 'STALE' | 'ANALYZING' | 'PARTIAL' | 'FAILED' = 'CURRENT';
+  if (!latestAnalysis) {
+    freshness = 'STALE';
+  } else if (latestAnalysis.status === 'RUNNING' || latestAnalysis.status === 'PENDING') {
+    freshness = 'ANALYZING';
+  } else if (latestAnalysis.status === 'FAILED') {
+    freshness = 'FAILED';
+  } else if (
+    project.repository?.currentCommitSha &&
+    latestAnalysis.commitSha &&
+    project.repository.currentCommitSha !== latestAnalysis.commitSha
+  ) {
+    freshness = 'STALE';
+  } else if (
+    computedCoverage &&
+    computedCoverage.files.coveragePercent < 100 &&
+    computedCoverage.files.source > computedCoverage.files.parsed
+  ) {
+    freshness = 'PARTIAL';
+  } else {
+    freshness = 'CURRENT';
+  }
+
+  const resolvedContext: ProjectWorkstationContext = {
     project: {
       id: project.id,
       name: project.name,
@@ -498,6 +576,12 @@ export async function getProjectWorkstationContext(
       ? {
           id: latestAnalysis.id,
           status: latestAnalysis.status,
+          freshness,
+          commitSha: latestAnalysis.commitSha || null,
+          branch: latestAnalysis.branch || project.defaultBranch,
+          analyzerVersion: latestAnalysis.analyzerVersion || 'v1.0',
+          coverage: latestAnalysis.coverage ?? computedCoverage?.overallCoveragePercent ?? null,
+          createdAt: latestAnalysis.createdAt,
           filesAnalyzed: latestAnalysis.filesAnalyzed,
           commitsAnalyzed: latestAnalysis.commitsAnalyzed,
           dependenciesDetected: latestAnalysis.dependenciesDetected,
@@ -523,4 +607,12 @@ export async function getProjectWorkstationContext(
       readmePreview,
     },
   };
+
+  // Populate cache for subsequent requests
+  contextCache.set(`${profile.id}:${projectId}:${latestAnalysis?.id || 'none'}`, {
+    context: resolvedContext,
+    expiresAt: Date.now() + CONTEXT_CACHE_TTL_MS,
+  });
+
+  return resolvedContext;
 }

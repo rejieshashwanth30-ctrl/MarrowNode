@@ -246,6 +246,7 @@ export default function DashboardPage() {
           {/* Project Repository Header */}
           <ProjectHeader
             project={selectedProject}
+            freshness={projectContext?.latestAnalysis?.freshness}
             onRefresh={handleSyncProject}
             isRefreshing={isRefreshing}
             onAnalyze={() => handleStartAnalysis()}

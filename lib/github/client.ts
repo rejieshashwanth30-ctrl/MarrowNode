@@ -1,6 +1,9 @@
 import { prisma } from '@/lib/prisma';
 import { requireAuth, AuthError, getOrCreateCurrentProfile } from '@/lib/auth';
 import { ensureMarrowNodeSchema } from '@/lib/db/init';
+import { githubCache } from '@/lib/github/cache';
+
+export { githubCache };
 
 export class GitHubApiError extends Error {
   statusCode: number;
@@ -190,7 +193,13 @@ export async function fetchRepositoryDetails(
   owner: string,
   repo: string
 ): Promise<GitHubRepositoryItem> {
-  return githubRequest<GitHubRepositoryItem>(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`, token);
+  const cacheKey = `${owner.toLowerCase()}/${repo.toLowerCase()}:details`;
+  return githubCache.fetchWithCache(
+    cacheKey,
+    'repo_details',
+    () => githubRequest<GitHubRepositoryItem>(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`, token),
+    60 * 1000
+  );
 }
 
 /**
@@ -212,9 +221,17 @@ export async function fetchRepoTree(
     size?: number;
   }>;
 }> {
-  return githubRequest(
-    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/git/trees/${encodeURIComponent(treeSha)}?recursive=1`,
-    token
+  const cacheKey = `${owner.toLowerCase()}/${repo.toLowerCase()}:tree:${treeSha}`;
+  return githubCache.fetchWithCache(
+    cacheKey,
+    'repo_tree',
+    () =>
+      githubRequest(
+        `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/git/trees/${encodeURIComponent(treeSha)}?recursive=1`,
+        token
+      ),
+    15 * 60 * 1000,
+    treeSha
   );
 }
 
@@ -226,7 +243,13 @@ export async function fetchRepoLanguages(
   owner: string,
   repo: string
 ): Promise<Record<string, number>> {
-  return githubRequest(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/languages`, token);
+  const cacheKey = `${owner.toLowerCase()}/${repo.toLowerCase()}:languages`;
+  return githubCache.fetchWithCache(
+    cacheKey,
+    'repo_languages',
+    () => githubRequest(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/languages`, token),
+    5 * 60 * 1000
+  );
 }
 
 /**
@@ -251,9 +274,16 @@ export async function fetchRepoCommits(
     html_url: string;
   }>
 > {
-  return githubRequest(
-    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/commits?per_page=${perPage}`,
-    token
+  const cacheKey = `${owner.toLowerCase()}/${repo.toLowerCase()}:commits:${perPage}`;
+  return githubCache.fetchWithCache(
+    cacheKey,
+    'repo_commits',
+    () =>
+      githubRequest(
+        `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/commits?per_page=${perPage}`,
+        token
+      ),
+    60 * 1000
   );
 }
 
@@ -265,26 +295,38 @@ export async function fetchRepoFileContent(
   token: string,
   owner: string,
   repo: string,
-  path: string
+  path: string,
+  commitSha?: string
 ): Promise<string | null> {
-  try {
-    const cleanPath = path.replace(/^\/+/, '');
-    const encodedPath = cleanPath
-      .split('/')
-      .map((segment) => encodeURIComponent(segment))
-      .join('/');
+  const cleanPath = path.replace(/^\/+/, '');
+  const cacheKey = `${owner.toLowerCase()}/${repo.toLowerCase()}:file:${cleanPath}:${commitSha || 'head'}`;
 
-    const data = await githubRequest<{
-      content: string;
-      encoding: string;
-    }>(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${encodedPath}`, token);
+  return githubCache.fetchWithCache(
+    cacheKey,
+    'file_content',
+    async () => {
+      try {
+        const encodedPath = cleanPath
+          .split('/')
+          .map((segment) => encodeURIComponent(segment))
+          .join('/');
 
-    if (data.encoding === 'base64' && data.content) {
-      return Buffer.from(data.content.replace(/\n/g, ''), 'base64').toString('utf8');
-    }
-    return null;
-  } catch (err) {
-    return null;
-  }
+        const queryParam = commitSha ? `?ref=${encodeURIComponent(commitSha)}` : '';
+        const data = await githubRequest<{
+          content: string;
+          encoding: string;
+        }>(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${encodedPath}${queryParam}`, token);
+
+        if (data.encoding === 'base64' && data.content) {
+          return Buffer.from(data.content.replace(/\n/g, ''), 'base64').toString('utf8');
+        }
+        return null;
+      } catch (err) {
+        return null;
+      }
+    },
+    15 * 60 * 1000,
+    commitSha
+  );
 }
 
