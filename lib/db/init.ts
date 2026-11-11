@@ -19,12 +19,14 @@ export async function ensureMarrowNodeSchema(): Promise<boolean> {
 
   initPromise = (async () => {
     try {
-      // 1. Fast check: verify marrownode schema and critical modernized columns exist
+      // 1. Fast check: verify marrownode schema, modernized columns, and PR check table exist
       const schemaCheck: any[] = await prisma.$queryRawUnsafe(`
-        SELECT column_name FROM information_schema.columns 
-        WHERE table_schema = 'marrownode' 
-          AND table_name = 'projects' 
-          AND column_name = 'isActive'
+        SELECT c.column_name FROM information_schema.columns c
+        INNER JOIN information_schema.tables t
+          ON t.table_schema = c.table_schema AND t.table_name = 'pull_request_checks'
+        WHERE c.table_schema = 'marrownode' 
+          AND c.table_name = 'projects' 
+          AND c.column_name = 'prChecksEnabled'
         LIMIT 1;
       `);
 
@@ -163,6 +165,91 @@ export async function ensureMarrowNodeSchema(): Promise<boolean> {
         ALTER TABLE "marrownode"."analyses" ADD COLUMN IF NOT EXISTS "coverage" DOUBLE PRECISION;
         ALTER TABLE "marrownode"."analyses" ADD COLUMN IF NOT EXISTS "analyzerVersion" TEXT DEFAULT 'v1.0';
         ALTER TABLE "marrownode"."analyses" ADD COLUMN IF NOT EXISTS "summaryJson" JSONB;
+
+        ALTER TABLE "marrownode"."projects" ADD COLUMN IF NOT EXISTS "prChecksEnabled" BOOLEAN NOT NULL DEFAULT false;
+        ALTER TABLE "marrownode"."projects" ADD COLUMN IF NOT EXISTS "prCheckAutoPublish" BOOLEAN NOT NULL DEFAULT false;
+        ALTER TABLE "marrownode"."projects" ADD COLUMN IF NOT EXISTS "prWebhookSecretEnc" TEXT;
+        ALTER TABLE "marrownode"."projects" ADD COLUMN IF NOT EXISTS "prWebhookSecretLast4" TEXT;
+
+        DO $$
+        BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM pg_type t
+            JOIN pg_namespace n ON n.oid = t.typnamespace
+            WHERE t.typname = 'PrCheckStatus' AND n.nspname = 'marrownode'
+          ) THEN
+            CREATE TYPE "marrownode"."PrCheckStatus" AS ENUM ('PASS', 'REVIEW', 'INCOMPLETE');
+          END IF;
+        END
+        $$;
+
+        CREATE TABLE IF NOT EXISTS "marrownode"."pull_request_checks" (
+          "id" TEXT NOT NULL,
+          "projectId" TEXT NOT NULL,
+          "repositoryId" TEXT NOT NULL,
+          "analysisId" TEXT,
+          "prNumber" INTEGER NOT NULL,
+          "prTitle" TEXT NOT NULL,
+          "prUrl" TEXT,
+          "prState" TEXT NOT NULL DEFAULT 'open',
+          "authorLogin" TEXT,
+          "baseBranch" TEXT,
+          "headBranch" TEXT,
+          "baseSha" TEXT NOT NULL,
+          "headSha" TEXT NOT NULL,
+          "analyzedCommitSha" TEXT,
+          "status" "marrownode"."PrCheckStatus" NOT NULL DEFAULT 'REVIEW',
+          "impactLevel" TEXT NOT NULL DEFAULT 'ISOLATED',
+          "changedFilesCount" INTEGER NOT NULL DEFAULT 0,
+          "directAffectedCount" INTEGER NOT NULL DEFAULT 0,
+          "transitiveAffectedCount" INTEGER NOT NULL DEFAULT 0,
+          "isPartialAnalysis" BOOLEAN NOT NULL DEFAULT false,
+          "isStaleBase" BOOLEAN NOT NULL DEFAULT false,
+          "summaryText" TEXT NOT NULL,
+          "triggerSource" TEXT NOT NULL DEFAULT 'manual',
+          "githubPublishStatus" TEXT,
+          "githubPublishNote" TEXT,
+          "reportJson" JSONB NOT NULL,
+          "checkedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          CONSTRAINT "pull_request_checks_pkey" PRIMARY KEY ("id")
+        );
+
+        CREATE UNIQUE INDEX IF NOT EXISTS "pull_request_checks_repositoryId_prNumber_headSha_key"
+          ON "marrownode"."pull_request_checks"("repositoryId", "prNumber", "headSha");
+        CREATE INDEX IF NOT EXISTS "pull_request_checks_projectId_createdAt_idx"
+          ON "marrownode"."pull_request_checks"("projectId", "createdAt");
+        CREATE INDEX IF NOT EXISTS "pull_request_checks_projectId_prNumber_idx"
+          ON "marrownode"."pull_request_checks"("projectId", "prNumber");
+        CREATE INDEX IF NOT EXISTS "pull_request_checks_repositoryId_prNumber_idx"
+          ON "marrownode"."pull_request_checks"("repositoryId", "prNumber");
+
+        DO $$
+        BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM pg_constraint WHERE conname = 'pull_request_checks_projectId_fkey'
+          ) THEN
+            ALTER TABLE "marrownode"."pull_request_checks"
+              ADD CONSTRAINT "pull_request_checks_projectId_fkey"
+              FOREIGN KEY ("projectId") REFERENCES "marrownode"."projects"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+          END IF;
+          IF NOT EXISTS (
+            SELECT 1 FROM pg_constraint WHERE conname = 'pull_request_checks_repositoryId_fkey'
+          ) THEN
+            ALTER TABLE "marrownode"."pull_request_checks"
+              ADD CONSTRAINT "pull_request_checks_repositoryId_fkey"
+              FOREIGN KEY ("repositoryId") REFERENCES "marrownode"."repositories"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+          END IF;
+          IF NOT EXISTS (
+            SELECT 1 FROM pg_constraint WHERE conname = 'pull_request_checks_analysisId_fkey'
+          ) THEN
+            ALTER TABLE "marrownode"."pull_request_checks"
+              ADD CONSTRAINT "pull_request_checks_analysisId_fkey"
+              FOREIGN KEY ("analysisId") REFERENCES "marrownode"."analyses"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+          END IF;
+        END
+        $$;
       `);
 
       console.log('[MarrowNode DB Init] marrownode schema and tables successfully provisioned.');

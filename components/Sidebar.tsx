@@ -17,15 +17,19 @@ import {
   Github,
   LogOut,
   User as UserIcon,
+  Compass,
+  GitPullRequest,
 } from 'lucide-react';
 
 export type DashboardView =
   | 'overview'
+  | 'onboarding'
   | 'explorer'
   | 'architecture'
   | 'timeline'
   | 'ask'
   | 'impact'
+  | 'pull-requests'
   | 'evidence'
   | 'settings';
 
@@ -65,6 +69,12 @@ export function Sidebar({ activeView, onSelectView, user, collapsed = false }: S
       icon: <LayoutDashboard className="w-4 h-4 shrink-0" />,
     },
     {
+      id: 'onboarding',
+      label: 'Onboarding',
+      description: 'Quick-start orientation, structure, auth, data & important files',
+      icon: <Compass className="w-4 h-4 shrink-0" />,
+    },
+    {
       id: 'explorer',
       label: 'Files',
       description: 'Browse the files and folders in your project',
@@ -93,6 +103,12 @@ export function Sidebar({ activeView, onSelectView, user, collapsed = false }: S
       label: 'Change Impact',
       description: 'See what could be affected by a change',
       icon: <Cpu className="w-4 h-4 shrink-0" />,
+    },
+    {
+      id: 'pull-requests',
+      label: 'PR Check',
+      description: 'Evaluate GitHub Pull Requests for blast radius, breaking refs & risk',
+      icon: <GitPullRequest className="w-4 h-4 shrink-0" />,
     },
     {
       id: 'evidence',

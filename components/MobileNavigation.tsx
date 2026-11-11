@@ -19,6 +19,8 @@ import {
   X,
   LogOut,
   User as UserIcon,
+  Compass,
+  GitPullRequest,
 } from 'lucide-react';
 
 interface MobileNavigationProps {
@@ -66,11 +68,13 @@ export function MobileNavigation({
 
   const allNavItems: { id: DashboardView; label: string; icon: React.ReactNode }[] = [
     { id: 'overview', label: 'Overview', icon: <LayoutDashboard className="w-5 h-5" /> },
+    { id: 'onboarding', label: 'Onboarding', icon: <Compass className="w-5 h-5" /> },
     { id: 'explorer', label: 'Files', icon: <FolderTree className="w-5 h-5" /> },
     { id: 'architecture', label: 'Project Structure', icon: <Network className="w-5 h-5" /> },
     { id: 'timeline', label: 'History', icon: <GitCommit className="w-5 h-5" /> },
     { id: 'ask', label: 'Ask MarrowNode', icon: <HelpCircle className="w-5 h-5" /> },
     { id: 'impact', label: 'Change Impact', icon: <Cpu className="w-5 h-5" /> },
+    { id: 'pull-requests', label: 'PR Check', icon: <GitPullRequest className="w-5 h-5" /> },
     { id: 'evidence', label: 'Evidence', icon: <ShieldCheck className="w-5 h-5" /> },
     { id: 'settings', label: 'Settings', icon: <Settings className="w-5 h-5" /> },
   ];

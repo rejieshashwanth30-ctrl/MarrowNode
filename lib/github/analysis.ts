@@ -369,6 +369,7 @@ export async function executeDeterministicAnalysis(params: {
     let externalImportsCount = 0;
     let unresolvedImportsCount = 0;
     const importedExternalPackages = new Set<string>();
+    const externalPackageUsage = new Map<string, Set<string>>();
     const batchSize = 12;
 
     await telemetry.measure(
@@ -425,6 +426,11 @@ export async function executeDeterministicAnalysis(params: {
                   } else if (resolved.isExternal && resolved.externalPackage) {
                     externalImportsCount++;
                     importedExternalPackages.add(resolved.externalPackage);
+                    const pkgUsers = externalPackageUsage.get(resolved.externalPackage) || new Set<string>();
+                    if (pkgUsers.size < 25) {
+                      pkgUsers.add(file.path);
+                      externalPackageUsage.set(resolved.externalPackage, pkgUsers);
+                    }
                     if (!detectedDependencies.includes(resolved.externalPackage)) {
                       detectedDependencies.push(resolved.externalPackage);
                     }
@@ -672,6 +678,10 @@ export async function executeDeterministicAnalysis(params: {
                 framework: detectedFramework,
                 manifests: foundManifests,
                 sampleDependencies: detectedDependencies.slice(0, 30),
+                allDependencies: detectedDependencies.slice(0, 200),
+                packageUsageMap: Object.fromEntries(
+                  Array.from(externalPackageUsage.entries()).map(([pkg, files]) => [pkg, Array.from(files)])
+                ),
                 totalCount: detectedDependencies.length,
                 provenance: createManifestProvenance({
                   repository: `${owner}/${repo}`,

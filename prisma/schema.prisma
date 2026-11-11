@@ -84,12 +84,17 @@ model Project {
   isActive             Boolean        @default(true)
   analysisStatus       AnalysisStatus @default(PENDING)
   lastAnalyzedAt       DateTime?
+  prChecksEnabled      Boolean        @default(false)
+  prCheckAutoPublish   Boolean        @default(false)
+  prWebhookSecretEnc   String?
+  prWebhookSecretLast4 String?
   createdAt            DateTime       @default(now())
   updatedAt            DateTime       @updatedAt
 
   repository           Repository?
   analyses             Analysis[]
   evidences            Evidence[]
+  pullRequestChecks    PullRequestCheck[]
 
   @@index([ownerId])
   @@index([ownerId, isActive])
@@ -121,6 +126,8 @@ model Repository {
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
+  pullRequestChecks PullRequestCheck[]
+
   @@map("repositories")
   @@schema("marrownode")
 }
@@ -150,6 +157,8 @@ model Analysis {
   createdAt            DateTime       @default(now())
   updatedAt            DateTime       @updatedAt
 
+  pullRequestChecks    PullRequestCheck[]
+
   @@index([projectId])
   @@index([projectId, createdAt])
   @@map("analyses")
@@ -175,5 +184,59 @@ model Evidence {
   @@index([projectId])
   @@index([projectId, type])
   @@map("evidences")
+  @@schema("marrownode")
+}
+
+// -------------------------------------------------------------
+// PULL REQUEST CHECK MODELS
+// Evidence-backed GitHub PR impact checks & audit history
+// -------------------------------------------------------------
+enum PrCheckStatus {
+  PASS
+  REVIEW
+  INCOMPLETE
+
+  @@schema("marrownode")
+}
+
+model PullRequestCheck {
+  id                      String        @id @default(cuid())
+  projectId               String
+  project                 Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  repositoryId            String
+  repository              Repository    @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  analysisId              String?
+  analysis                Analysis?     @relation(fields: [analysisId], references: [id], onDelete: SetNull)
+  prNumber                Int
+  prTitle                 String
+  prUrl                   String?
+  prState                 String        @default("open")
+  authorLogin             String?
+  baseBranch              String?
+  headBranch              String?
+  baseSha                 String
+  headSha                 String
+  analyzedCommitSha       String?
+  status                  PrCheckStatus @default(REVIEW)
+  impactLevel             String        @default("ISOLATED")
+  changedFilesCount       Int           @default(0)
+  directAffectedCount     Int           @default(0)
+  transitiveAffectedCount Int           @default(0)
+  isPartialAnalysis       Boolean       @default(false)
+  isStaleBase             Boolean       @default(false)
+  summaryText             String
+  triggerSource           String        @default("manual")
+  githubPublishStatus     String?
+  githubPublishNote       String?
+  reportJson              Json
+  checkedAt               DateTime      @default(now())
+  createdAt               DateTime      @default(now())
+  updatedAt               DateTime      @updatedAt
+
+  @@unique([repositoryId, prNumber, headSha])
+  @@index([projectId, createdAt])
+  @@index([projectId, prNumber])
+  @@index([repositoryId, prNumber])
+  @@map("pull_request_checks")
   @@schema("marrownode")
 }

@@ -1,0 +1,691 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
+
+import {
+  generateWebhookSecret,
+  encryptWebhookSecret,
+  decryptWebhookSecret,
+  verifyGitHubWebhookSignature,
+  maskSecretLast4,
+} from '../lib/security/webhook-crypto';
+import {
+  evaluatePullRequestImpactPure,
+  parseManifestPatchDiffs,
+} from '../lib/services/pr-check';
+import {
+  assembleDeveloperOnboardingReport,
+  type RawEvidenceExtract,
+} from '../lib/services/onboarding';
+import type { DependencyEdge } from '../lib/analysis/graph-engine';
+import type { ProjectWorkstationContext } from '../lib/services/project-context';
+import { prisma } from '../lib/prisma';
+
+function makeBaseContext(overrides?: Partial<ProjectWorkstationContext>): ProjectWorkstationContext {
+  return {
+    project: {
+      id: 'proj_test_1',
+      name: 'sample-app',
+      description: 'Sample workspace',
+      githubOwner: 'acme',
+      githubRepositoryName: 'sample-app',
+      defaultBranch: 'main',
+      visibility: 'public',
+      primaryLanguage: 'TypeScript',
+      framework: 'Next.js',
+      database: null,
+      analysisStatus: 'COMPLETED',
+      lastAnalyzedAt: new Date('2026-11-11T10:00:00Z'),
+    },
+    repository: {
+      fullName: 'acme/sample-app',
+      isPrivate: false,
+      stars: 12,
+      isFork: false,
+      lastSyncedAt: new Date('2026-11-11T10:00:00Z'),
+    },
+    latestAnalysis: {
+      id: 'analysis_1',
+      status: 'COMPLETED',
+      freshness: 'CURRENT',
+      commitSha: 'aaaaaaa111111111111111111111111111111111',
+      branch: 'main',
+      analyzerVersion: 'v1.0',
+      coverage: 100,
+      createdAt: new Date('2026-11-11T10:00:00Z'),
+      filesAnalyzed: 25,
+      commitsAnalyzed: 5,
+      dependenciesDetected: 6,
+      architectureNodes: 4,
+      evidenceCount: 5,
+      completedAt: new Date('2026-11-11T10:00:00Z'),
+      errorMessage: null,
+    },
+    fileTree: [],
+    nodes: [
+      {
+        id: 'node-app',
+        name: 'sample-app',
+        type: 'App',
+        category: 'Entrypoint',
+        description: 'App root',
+        filesCount: 3,
+        health: 'active',
+        relatedFiles: ['package.json'],
+        dependencies: ['lib'],
+        dependents: [],
+        recentChanges: [],
+        metrics: { loc: 120, fanIn: 0, fanOut: 2 },
+        position: { x: 0, y: 0 },
+      },
+      {
+        id: 'node-lib',
+        name: 'Lib',
+        type: 'Services',
+        category: 'Module',
+        description: 'Shared libs',
+        filesCount: 8,
+        health: 'stable',
+        relatedFiles: ['lib/*'],
+        dependencies: [],
+        dependents: ['node-app'],
+        recentChanges: [],
+        metrics: { loc: 600, fanIn: 3, fanOut: 1 },
+        position: { x: 100, y: 100 },
+      },
+      {
+        id: 'node-app-routes',
+        name: 'App',
+        type: 'API',
+        category: 'Module',
+        description: 'App routes',
+        filesCount: 6,
+        health: 'stable',
+        relatedFiles: ['app/*'],
+        dependencies: ['node-lib'],
+        dependents: ['node-app'],
+        recentChanges: [],
+        metrics: { loc: 420, fanIn: 1, fanOut: 3 },
+        position: { x: 200, y: 100 },
+      },
+    ],
+    edges: [
+      { id: 'e1', source: 'node-app-routes', target: 'node-lib', relationship: 'imports', confidence: 1 },
+    ],
+    timeline: [],
+    evidenceItems: [],
+    dependencies: ['next', 'react', '@prisma/client', '@supabase/ssr', 'stripe', 'zod'],
+    modules: ['app', 'lib', 'prisma'],
+    coverage: {
+      files: { discovered: 25, source: 20, parsed: 20, failed: 0, ignored: 0, coveragePercent: 100 },
+      architecture: {
+        modulesDetected: 3,
+        modulesMapped: 3,
+        unresolvedModules: 0,
+        coveragePercent: 100,
+        detectedModuleNames: ['app', 'lib', 'prisma'],
+        unresolvedModuleNames: [],
+      },
+      imports: { total: 10, resolved: 10, unresolved: 0, external: 6, resolutionPercent: 100 },
+      dependencies: {
+        manifestsDetected: 1,
+        manifestsParsed: 1,
+        manifestParsingPercent: 100,
+        declaredDependencies: 6,
+        resolvedDependencies: 6,
+        unresolvedDependencies: 0,
+        usageResolutionPercent: 100,
+      },
+      git: {
+        commitsDiscovered: 5,
+        commitsIndexed: 5,
+        coveragePercent: 100,
+        historyScope: 'Latest 5 commits on main',
+      },
+      documentation: { filesDetected: 1, filesIndexed: 1, docTypes: ['README'], hasReadme: true },
+      overallCoveragePercent: 100,
+      overallPercentage: 100,
+      metrics: { totalFiles: 25, commitsTracked: 5, relationshipsMapped: 10, architectureNodes: 4 },
+      breakdown: {
+        codebaseUnderstanding: 100,
+        architectureMapping: 100,
+        gitHistory: 100,
+        dependencyMapping: 100,
+        documentation: 100,
+      },
+    },
+    summary: {
+      totalFiles: 25,
+      topLanguage: 'TypeScript',
+      framework: 'Next.js',
+      hasReadme: true,
+      readmePreview: '# Sample App',
+    },
+    ...overrides,
+  };
+}
+
+function makeRawEvidence(overrides?: Partial<RawEvidenceExtract>): RawEvidenceExtract {
+  return {
+    tree: [
+      { path: 'README.md', classification: 'DOCUMENTATION' },
+      { path: 'package.json', classification: 'CONFIG' },
+      { path: 'prisma/schema.prisma', classification: 'CONFIG' },
+      { path: 'app/layout.tsx', classification: 'SOURCE' },
+      { path: 'app/api/health/route.ts', classification: 'SOURCE' },
+      { path: 'lib/auth.ts', classification: 'SOURCE' },
+      { path: 'lib/prisma.ts', classification: 'SOURCE' },
+      { path: 'lib/core.ts', classification: 'SOURCE' },
+      { path: 'lib/leaf.ts', classification: 'SOURCE' },
+      { path: 'tests/core.test.ts', classification: 'TEST' },
+    ],
+    classificationCounts: {
+      SOURCE: 6,
+      CONFIG: 2,
+      DOCUMENTATION: 1,
+      TEST: 1,
+      GENERATED: 0,
+      BINARY: 0,
+      ASSET: 0,
+    },
+    dependencyEdges: [
+      { id: '1', source: 'app/layout.tsx', target: 'lib/auth.ts', line: 1, relationship: 'imports', confidence: 1 },
+      { id: '2', source: 'app/api/health/route.ts', target: 'lib/prisma.ts', line: 1, relationship: 'imports', confidence: 1 },
+      { id: '3', source: 'lib/auth.ts', target: 'lib/core.ts', line: 2, relationship: 'imports', confidence: 1 },
+      { id: '4', source: 'app/layout.tsx', target: 'lib/core.ts', line: 2, relationship: 'imports', confidence: 1 },
+    ],
+    cycles: [],
+    languageDistribution: { TypeScript: 9000, CSS: 1000 },
+    manifests: ['package.json'],
+    declaredDependencies: ['next', 'react', '@prisma/client', '@supabase/ssr', 'stripe'],
+    readmePreview: '# Sample App\nNext.js application with Prisma and Supabase auth.',
+    readmePath: 'README.md',
+    commits: [
+      {
+        sha: 'aaaaaaa111111111111111111111111111111111',
+        shortSha: 'aaaaaaa',
+        date: '2026-11-11',
+        author: 'Alice',
+        title: 'Add health check endpoint',
+        type: 'feature',
+      },
+    ],
+    ...overrides,
+  };
+}
+
+// =========================================================================
+// 1. WEBHOOK CRYPTO & HMAC SECURITY TESTS
+// =========================================================================
+test('webhook secret encryption roundtrip and timing-safe HMAC verification', () => {
+  const secret = generateWebhookSecret();
+  assert.ok(secret.startsWith('whsec_'));
+
+  const { encrypted, last4 } = encryptWebhookSecret(secret);
+  assert.equal(decryptWebhookSecret(encrypted), secret);
+  assert.equal(maskSecretLast4(last4), `whsec_••••••••${last4}`);
+  assert.equal(decryptWebhookSecret('corrupted-payload'), null);
+
+  const payload = JSON.stringify({ action: 'opened', number: 12 });
+  const validSig = 'sha256=' + crypto.createHmac('sha256', secret).update(payload, 'utf8').digest('hex');
+
+  assert.equal(verifyGitHubWebhookSignature(payload, validSig, secret), true);
+  assert.equal(verifyGitHubWebhookSignature(payload + ' ', validSig, secret), false);
+  assert.equal(verifyGitHubWebhookSignature(payload, 'sha256=deadbeef', secret), false);
+  assert.equal(verifyGitHubWebhookSignature(payload, null, secret), false);
+  assert.equal(verifyGitHubWebhookSignature(payload, validSig, ''), false);
+});
+
+// =========================================================================
+// 2. DEVELOPER ONBOARDING SCENARIO TESTS
+// =========================================================================
+test('Developer Onboarding generates all verified sections for fullstack Next.js repo', () => {
+  const context = makeBaseContext();
+  const raw = makeRawEvidence();
+  const report = assembleDeveloperOnboardingReport({ projectId: 'proj_test_1', context, raw });
+
+  assert.equal(report.glance.fullName, 'acme/sample-app');
+  assert.equal(report.glance.repoScaleLabel, 'Small');
+  assert.ok(report.startHere.length >= 4);
+  assert.equal(report.startHere[0].filePath, 'README.md');
+  assert.ok(report.importantFiles.some((f) => f.path === 'lib/core.ts'));
+  assert.equal(report.authFlow.status, 'DETECTED');
+  assert.ok(report.authFlow.detectedLibraries.includes('@supabase/ssr'));
+  assert.equal(report.dataFlow.status, 'DETECTED');
+  assert.ok(report.dataFlow.keyFiles.some((k) => k.path === 'prisma/schema.prisma'));
+  assert.ok(report.externalServices.some((s) => s.name === 'Stripe' && s.confidence === 'Verified'));
+  assert.ok(report.epistemicSummary.facts.length >= 2);
+  assert.ok(report.epistemicSummary.inferences.length >= 1);
+  assert.ok(report.epistemicSummary.unknowns.length >= 1);
+});
+
+test('Developer Onboarding is honest when repo has NO auth, NO DB, cycles, and partial coverage', () => {
+  const baseCtx = makeBaseContext({
+    latestAnalysis: {
+      id: 'analysis_partial',
+      status: 'COMPLETED',
+      freshness: 'STALE',
+      commitSha: 'bbbbbbb',
+      branch: 'main',
+      analyzerVersion: 'v1.0',
+      coverage: 45,
+      createdAt: new Date(),
+      filesAnalyzed: 100,
+      commitsAnalyzed: 2,
+      dependenciesDetected: 2,
+      architectureNodes: 2,
+      evidenceCount: 3,
+      completedAt: new Date(),
+      errorMessage: null,
+    },
+    dependencies: ['commander', 'chalk'],
+    coverage: {
+      ...makeBaseContext().coverage!,
+      files: { discovered: 110, source: 100, parsed: 45, failed: 2, ignored: 8, coveragePercent: 45 },
+      imports: { total: 20, resolved: 15, unresolved: 5, external: 2, resolutionPercent: 85 },
+      overallCoveragePercent: 52,
+      overallPercentage: 52,
+    },
+  });
+
+  const raw = makeRawEvidence({
+    tree: [
+      { path: 'src/cli.ts', classification: 'SOURCE' },
+      { path: 'src/a.ts', classification: 'SOURCE' },
+      { path: 'src/b.ts', classification: 'SOURCE' },
+      { path: 'package.json', classification: 'CONFIG' },
+    ],
+    classificationCounts: {
+      SOURCE: 100,
+      CONFIG: 5,
+      DOCUMENTATION: 0,
+      TEST: 0,
+      GENERATED: 5,
+      BINARY: 0,
+      ASSET: 0,
+    },
+    dependencyEdges: [
+      { id: 'c1', source: 'src/a.ts', target: 'src/b.ts', line: 1, relationship: 'imports', confidence: 1 },
+      { id: 'c2', source: 'src/b.ts', target: 'src/a.ts', line: 1, relationship: 'imports', confidence: 1 },
+    ],
+    cycles: [['src/a.ts', 'src/b.ts', 'src/a.ts']],
+    declaredDependencies: ['commander', 'chalk'],
+    readmePreview: null,
+    readmePath: null,
+  });
+
+  const report = assembleDeveloperOnboardingReport({ projectId: 'proj_cli', context: baseCtx, raw });
+
+  assert.equal(report.snapshot.isPartial, true);
+  assert.equal(report.snapshot.isStale, true);
+  assert.equal(report.authFlow.status, 'NONE_DETECTED');
+  assert.equal(report.authFlow.confidence, 'UNKNOWN');
+  assert.equal(report.dataFlow.status, 'NONE_DETECTED');
+  assert.equal(report.glance.hasReadme, false);
+  // Circular dependency triggers Needs Investigation / Cycle Detected, NEVER fabricated "Bug"
+  assert.ok(report.attentionAreas.some((a) => a.kind === 'Cycle Detected'));
+  assert.ok(!JSON.stringify(report.attentionAreas).toLowerCase().includes('"bug"'));
+  assert.ok(report.attentionAreas.some((a) => a.title.includes('No automated test files detected')));
+});
+
+// =========================================================================
+// 3. ALL 10 GITHUB PR CHECK SCENARIO TESTS
+// =========================================================================
+function buildSharedEdges(): DependencyEdge[] {
+  // Consumer chain where `lib/shared.ts` is used directly by 5 files and transitively by 5 more (10 total -> HIGH blast!)
+  const edges: DependencyEdge[] = [];
+  for (let i = 1; i <= 5; i++) {
+    edges.push({
+      id: `d-${i}`,
+      source: `services/svc-${i}.ts`,
+      target: 'lib/shared.ts',
+      line: 1,
+      relationship: 'imports',
+      confidence: 1,
+    });
+    edges.push({
+      id: `t-${i}`,
+      source: `app/api/route-${i}.ts`,
+      target: `services/svc-${i}.ts`,
+      line: 1,
+      relationship: 'imports',
+      confidence: 1,
+    });
+  }
+  edges.push({
+    id: 'del-1',
+    source: 'components/LegacyWidget.tsx',
+    target: 'lib/obsolete.ts',
+    line: 3,
+    relationship: 'imports',
+    confidence: 1,
+  });
+  edges.push({
+    id: 'ren-1',
+    source: 'app/dashboard/page.tsx',
+    target: 'lib/old-name.ts',
+    line: 4,
+    relationship: 'imports',
+    confidence: 1,
+  });
+  return edges;
+}
+
+const BASE_PR = {
+  number: 42,
+  title: 'Test PR',
+  url: 'https://github.com/acme/repo/pull/42',
+  state: 'open',
+  authorLogin: 'alice',
+  baseBranch: 'main',
+  headBranch: 'feat/test',
+  baseSha: 'sha_base_1',
+  headSha: 'sha_head_1',
+};
+
+const FULL_ANALYSIS = {
+  analysisId: 'ana_full_1',
+  status: 'COMPLETED',
+  commitSha: 'sha_base_1',
+  sourceFilesTotal: 20,
+  sourceFilesParsed: 20,
+  sourceCoveragePercent: 100,
+  overallCoveragePercent: 100,
+};
+
+test('PR Scenario 1: isolated single leaf file change -> ISOLATED & PASS', () => {
+  const report = evaluatePullRequestImpactPure({
+    pr: BASE_PR,
+    files: [{ sha: '1', filename: 'lib/isolated.ts', status: 'modified', additions: 5, deletions: 2, changes: 7 }],
+    analysis: FULL_ANALYSIS,
+    dependencyEdges: buildSharedEdges(),
+    knownRepoFiles: ['lib/isolated.ts', 'lib/shared.ts'],
+  });
+  assert.equal(report.impactLevel, 'ISOLATED');
+  assert.equal(report.status, 'PASS');
+  assert.equal(report.totals.untouchedAffectedFiles, 0);
+});
+
+test('PR Scenario 2: high blast radius core helper -> HIGH & REVIEW with untouched dependents', () => {
+  const report = evaluatePullRequestImpactPure({
+    pr: BASE_PR,
+    files: [{ sha: '1', filename: 'lib/shared.ts', status: 'modified', additions: 12, deletions: 4, changes: 16 }],
+    analysis: FULL_ANALYSIS,
+    dependencyEdges: buildSharedEdges(),
+    knownRepoFiles: ['lib/shared.ts'],
+  });
+  assert.equal(report.impactLevel, 'HIGH');
+  assert.equal(report.status, 'REVIEW');
+  assert.equal(report.totals.directAffectedFiles, 5);
+  assert.equal(report.totals.transitiveAffectedFiles, 5);
+  assert.equal(report.totals.untouchedAffectedFiles, 10);
+});
+
+test('PR Scenario 3: deleted file still imported by analyzed callers -> broken reference alert & REVIEW', () => {
+  const report = evaluatePullRequestImpactPure({
+    pr: BASE_PR,
+    files: [{ sha: '1', filename: 'lib/obsolete.ts', status: 'removed', additions: 0, deletions: 40, changes: 40 }],
+    analysis: FULL_ANALYSIS,
+    dependencyEdges: buildSharedEdges(),
+    knownRepoFiles: ['lib/obsolete.ts', 'components/LegacyWidget.tsx'],
+  });
+  assert.equal(report.status, 'REVIEW');
+  assert.equal(report.brokenReferenceAlerts.length, 1);
+  assert.deepEqual(report.brokenReferenceAlerts[0].affectedCallers, ['components/LegacyWidget.tsx']);
+});
+
+test('PR Scenario 4: renamed file with unupdated caller referencing previous_filename -> REVIEW alert', () => {
+  const report = evaluatePullRequestImpactPure({
+    pr: BASE_PR,
+    files: [
+      {
+        sha: '1',
+        filename: 'lib/new-name.ts',
+        previous_filename: 'lib/old-name.ts',
+        status: 'renamed',
+        additions: 1,
+        deletions: 1,
+        changes: 2,
+      },
+    ],
+    analysis: FULL_ANALYSIS,
+    dependencyEdges: buildSharedEdges(),
+    knownRepoFiles: ['lib/old-name.ts', 'app/dashboard/page.tsx'],
+  });
+  assert.equal(report.status, 'REVIEW');
+  assert.equal(report.brokenReferenceAlerts.length, 1);
+  assert.equal(report.brokenReferenceAlerts[0].changeType, 'renamed');
+  assert.deepEqual(report.brokenReferenceAlerts[0].affectedCallers, ['app/dashboard/page.tsx']);
+});
+
+test('PR Scenario 5: newly added code file records resolved internal/external connections', () => {
+  const report = evaluatePullRequestImpactPure({
+    pr: BASE_PR,
+    files: [{ sha: '1', filename: 'lib/feature-new.ts', status: 'added', additions: 30, deletions: 0, changes: 30 }],
+    analysis: FULL_ANALYSIS,
+    dependencyEdges: buildSharedEdges(),
+    knownRepoFiles: ['lib/shared.ts'],
+    newFileConnections: [
+      { filePath: 'lib/feature-new.ts', internalImports: ['lib/shared.ts'], externalPackages: ['zod'] },
+    ],
+  });
+  assert.equal(report.status, 'PASS');
+  assert.equal(report.newFileConnections.length, 1);
+  assert.ok(report.changedFiles[0].notes[0].includes('1 internal file(s)'));
+});
+
+test('PR Scenario 6: package.json manifest diff parses added/removed/updated & flags lockfile/importers', () => {
+  const patch = [
+    '@@ -10,5 +10,5 @@',
+    '-    "lodash": "^4.17.21",',
+    '-    "next": "^14.2.0",',
+    '+    "next": "^14.2.35",',
+    '+    "lucide-react": "^0.453.0",',
+  ].join('\n');
+  const diff = parseManifestPatchDiffs([
+    { sha: 'p', filename: 'package.json', status: 'modified', additions: 2, deletions: 2, changes: 4, patch },
+  ]);
+  assert.equal(diff.added[0].name, 'lucide-react');
+  assert.equal(diff.removed[0].name, 'lodash');
+  assert.equal(diff.updated[0].name, 'next');
+  assert.ok(diff.warnings.some((w) => w.includes('without an accompanying lockfile update')));
+
+  const report = evaluatePullRequestImpactPure({
+    pr: BASE_PR,
+    files: [{ sha: 'p', filename: 'package.json', status: 'modified', additions: 2, deletions: 2, changes: 4, patch }],
+    analysis: FULL_ANALYSIS,
+    dependencyEdges: [],
+    knownRepoFiles: ['package.json', 'lib/utils.ts'],
+    externalPackageUsageMap: { lodash: ['lib/utils.ts'] },
+  });
+  assert.equal(report.status, 'REVIEW');
+  assert.ok(report.dependencyChanges.warnings.some((w) => w.includes('Removed package "lodash"')));
+});
+
+test('PR Scenario 7: database / schema / migration changes flagged accurately', () => {
+  const report = evaluatePullRequestImpactPure({
+    pr: BASE_PR,
+    files: [{ sha: 's', filename: 'prisma/schema.prisma', status: 'modified', additions: 4, deletions: 0, changes: 4 }],
+    analysis: FULL_ANALYSIS,
+    dependencyEdges: [],
+    knownRepoFiles: ['prisma/schema.prisma'],
+  });
+  assert.equal(report.status, 'REVIEW');
+  assert.equal(report.databaseChanges.detected, true);
+  assert.deepEqual(report.databaseChanges.files, ['prisma/schema.prisma']);
+});
+
+test('PR Scenario 8: security-sensitive area touched -> flagged without fabricated vulnerability claim', () => {
+  const report = evaluatePullRequestImpactPure({
+    pr: BASE_PR,
+    files: [{ sha: 'a', filename: 'lib/auth/session.ts', status: 'modified', additions: 3, deletions: 1, changes: 4 }],
+    analysis: FULL_ANALYSIS,
+    dependencyEdges: [],
+    knownRepoFiles: ['lib/auth/session.ts'],
+  });
+  assert.equal(report.status, 'REVIEW');
+  assert.equal(report.securitySignals.detected, true);
+  assert.equal(report.securitySignals.summary, 'Security-sensitive area changed');
+  assert.ok(!JSON.stringify(report).toLowerCase().includes('vulnerability found'));
+});
+
+test('PR Scenario 9: non-code only PR -> ISOLATED & PASS with 0 code files changed', () => {
+  const report = evaluatePullRequestImpactPure({
+    pr: BASE_PR,
+    files: [
+      { sha: 'd1', filename: 'README.md', status: 'modified', additions: 10, deletions: 2, changes: 12 },
+      { sha: 'd2', filename: 'docs/setup.md', status: 'added', additions: 20, deletions: 0, changes: 20 },
+    ],
+    analysis: FULL_ANALYSIS,
+    dependencyEdges: buildSharedEdges(),
+    knownRepoFiles: ['README.md'],
+  });
+  assert.equal(report.totals.codeFilesChanged, 0);
+  assert.equal(report.totals.nonCodeFilesChanged, 2);
+  assert.equal(report.impactLevel, 'ISOLATED');
+  assert.equal(report.status, 'PASS');
+});
+
+test('PR Scenario 10: incomplete analysis disclosure, missing analysis INCOMPLETE, and stale base commit warning', () => {
+  const partialReport = evaluatePullRequestImpactPure({
+    pr: { ...BASE_PR, baseSha: 'sha_newer_base' },
+    files: [{ sha: '1', filename: 'lib/unknown-module.ts', status: 'modified', additions: 2, deletions: 1, changes: 3 }],
+    analysis: {
+      analysisId: 'ana_part',
+      status: 'COMPLETED',
+      commitSha: 'sha_old_base',
+      sourceFilesTotal: 100,
+      sourceFilesParsed: 45,
+      sourceCoveragePercent: 45,
+      overallCoveragePercent: 50,
+    },
+    dependencyEdges: [],
+    knownRepoFiles: ['lib/other.ts'],
+  });
+  assert.equal(partialReport.status, 'REVIEW');
+  assert.equal(partialReport.analysisSnapshot.isPartialAnalysis, true);
+  assert.ok(partialReport.analysisSnapshot.partialDisclosure?.includes('55% of source files'));
+  assert.equal(partialReport.analysisSnapshot.isStaleBase, true);
+
+  const missingAnalysisReport = evaluatePullRequestImpactPure({
+    pr: BASE_PR,
+    files: [{ sha: '1', filename: 'src/index.ts', status: 'modified', additions: 5, deletions: 1, changes: 6 }],
+    analysis: {
+      analysisId: null,
+      status: null,
+      commitSha: null,
+      sourceFilesTotal: 0,
+      sourceFilesParsed: 0,
+      sourceCoveragePercent: 0,
+      overallCoveragePercent: 0,
+    },
+    dependencyEdges: [],
+    knownRepoFiles: [],
+  });
+  assert.equal(missingAnalysisReport.status, 'INCOMPLETE');
+});
+
+// =========================================================================
+// 4. NEON POSTGRESQL MULTI-TENANT ISOLATION & PR CHECK IDEMPOTENCY TEST
+// =========================================================================
+test('PostgreSQL multi-tenant isolation & (repositoryId, prNumber, headSha) unique constraint', async () => {
+  const suffix = crypto.randomBytes(4).toString('hex');
+  const userA = await prisma.user.create({
+    data: { supabaseUserId: `test_supa_a_${suffix}`, email: `a_${suffix}@example.com` },
+  });
+  const userB = await prisma.user.create({
+    data: { supabaseUserId: `test_supa_b_${suffix}`, email: `b_${suffix}@example.com` },
+  });
+
+  try {
+    const projectA = await prisma.project.create({
+      data: {
+        ownerId: userA.id,
+        name: `repo-a-${suffix}`,
+        githubOwner: 'org',
+        githubRepositoryName: 'shared-name',
+        prChecksEnabled: true,
+      },
+    });
+    const repoA = await prisma.repository.create({
+      data: {
+        projectId: projectA.id,
+        owner: 'org',
+        name: 'shared-name',
+        fullName: 'org/shared-name',
+        url: 'https://github.com/org/shared-name',
+      },
+    });
+
+    const projectB = await prisma.project.create({
+      data: {
+        ownerId: userB.id,
+        name: `repo-b-${suffix}`,
+        githubOwner: 'org',
+        githubRepositoryName: 'shared-name',
+        prChecksEnabled: false,
+      },
+    });
+
+    // Strict ownership lookup prevents User B from ever seeing User A's project
+    const crossTenantHit = await prisma.project.findFirst({
+      where: { id: projectA.id, ownerId: userB.id },
+    });
+    assert.equal(crossTenantHit, null);
+
+    // Insert PR check on Repo A
+    const sampleReport = evaluatePullRequestImpactPure({
+      pr: BASE_PR,
+      files: [{ sha: 'x', filename: 'README.md', status: 'modified', additions: 1, deletions: 0, changes: 1 }],
+      analysis: FULL_ANALYSIS,
+      dependencyEdges: [],
+      knownRepoFiles: ['README.md'],
+    });
+
+    await prisma.pullRequestCheck.create({
+      data: {
+        projectId: projectA.id,
+        repositoryId: repoA.id,
+        prNumber: 42,
+        prTitle: 'Test PR',
+        baseSha: 'base1',
+        headSha: 'head1',
+        status: 'PASS',
+        impactLevel: 'ISOLATED',
+        summaryText: sampleReport.summaryText,
+        reportJson: sampleReport as any,
+      },
+    });
+
+    // Attempting duplicate insert for same (repositoryId, prNumber, headSha) rejects cleanly (P2002)
+    await assert.rejects(
+      () =>
+        prisma.pullRequestCheck.create({
+          data: {
+            projectId: projectA.id,
+            repositoryId: repoA.id,
+            prNumber: 42,
+            prTitle: 'Duplicate PR',
+            baseSha: 'base1',
+            headSha: 'head1',
+            status: 'PASS',
+            impactLevel: 'ISOLATED',
+            summaryText: 'dup',
+            reportJson: {} as any,
+          },
+        }),
+      (err: any) => err?.code === 'P2002'
+    );
+
+    // User B has 0 PR checks
+    const userBChecks = await prisma.pullRequestCheck.findMany({
+      where: { project: { ownerId: userB.id } },
+    });
+    assert.equal(userBChecks.length, 0);
+    assert.ok(projectB.id);
+  } finally {
+    await prisma.user.deleteMany({
+      where: { id: { in: [userA.id, userB.id] } },
+    });
+  }
+});

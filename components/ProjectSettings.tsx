@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
@@ -13,6 +13,12 @@ import {
   Laptop,
   CheckCircle2,
   Save,
+  GitPullRequest,
+  Copy,
+  Check,
+  RefreshCw,
+  AlertTriangle,
+  KeyRound,
 } from 'lucide-react';
 
 interface ProjectSettingsProps {
@@ -32,6 +38,95 @@ export function ProjectSettings({ project }: ProjectSettingsProps) {
   const [projectName, setProjectName] = useState(project?.name || '');
   const [description, setDescription] = useState(project?.description || '');
   const [branch, setBranch] = useState(project?.defaultBranch || 'main');
+
+  // PR Check & Webhook settings state
+  const [prChecksEnabled, setPrChecksEnabled] = useState(false);
+  const [prCheckAutoPublish, setPrCheckAutoPublish] = useState(false);
+  const [webhookUrl, setWebhookUrl] = useState('');
+  const [maskedSecret, setMaskedSecret] = useState<string | null>(null);
+  const [plaintextSecretOnce, setPlaintextSecretOnce] = useState<string | null>(null);
+  const [isLoadingPrSettings, setIsLoadingPrSettings] = useState(false);
+  const [isSavingPrSettings, setIsSavingPrSettings] = useState(false);
+  const [prSettingsError, setPrSettingsError] = useState<string | null>(null);
+  const [copiedField, setCopiedField] = useState<'url' | 'secret' | null>(null);
+
+  const loadPrSettings = useCallback(async () => {
+    if (!project?.id) return;
+    setIsLoadingPrSettings(true);
+    setPrSettingsError(null);
+    try {
+      const res = await fetch(`/api/projects/${encodeURIComponent(project.id)}/settings`, {
+        cache: 'no-store',
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data?.error || 'Failed to load PR Check settings.');
+      }
+      if (data.settings) {
+        setPrChecksEnabled(Boolean(data.settings.prChecksEnabled));
+        setPrCheckAutoPublish(Boolean(data.settings.prCheckAutoPublish));
+        setWebhookUrl(data.settings.webhookUrl || '');
+        setMaskedSecret(data.settings.maskedWebhookSecret || null);
+      }
+    } catch (err: any) {
+      setPrSettingsError(err?.message || 'Unable to load webhook configuration.');
+    } finally {
+      setIsLoadingPrSettings(false);
+    }
+  }, [project?.id]);
+
+  useEffect(() => {
+    setPlaintextSecretOnce(null);
+    if (project?.id) {
+      loadPrSettings();
+    }
+  }, [project?.id, loadPrSettings]);
+
+  const patchPrSettings = async (payload: {
+    prChecksEnabled?: boolean;
+    prCheckAutoPublish?: boolean;
+    rotateWebhookSecret?: boolean;
+  }) => {
+    if (!project?.id) return;
+    setIsSavingPrSettings(true);
+    setPrSettingsError(null);
+    try {
+      const res = await fetch(`/api/projects/${encodeURIComponent(project.id)}/settings`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data?.error || 'Failed to save PR Check settings.');
+      }
+      if (data.settings) {
+        setPrChecksEnabled(Boolean(data.settings.prChecksEnabled));
+        setPrCheckAutoPublish(Boolean(data.settings.prCheckAutoPublish));
+        setWebhookUrl(data.settings.webhookUrl || '');
+        setMaskedSecret(data.settings.maskedWebhookSecret || null);
+      }
+      if (data.plaintextSecretOnce) {
+        setPlaintextSecretOnce(data.plaintextSecretOnce);
+      }
+      setSavedNotice(true);
+      setTimeout(() => setSavedNotice(false), 2000);
+    } catch (err: any) {
+      setPrSettingsError(err?.message || 'Unable to update settings.');
+    } finally {
+      setIsSavingPrSettings(false);
+    }
+  };
+
+  const handleCopy = async (field: 'url' | 'secret', value: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopiedField(field);
+      setTimeout(() => setCopiedField(null), 1800);
+    } catch {
+      // ignore clipboard errors cleanly
+    }
+  };
 
   const handleSave = () => {
     setSavedNotice(true);
@@ -60,7 +155,7 @@ export function ProjectSettings({ project }: ProjectSettingsProps) {
         {[
           { id: 'general', label: 'General' },
           { id: 'analysis', label: 'Analysis' },
-          { id: 'github', label: 'GitHub Connection' },
+          { id: 'github', label: 'GitHub & PR Check' },
           { id: 'appearance', label: 'Appearance' },
         ].map((tab) => (
           <button
@@ -149,16 +244,172 @@ export function ProjectSettings({ project }: ProjectSettingsProps) {
           </div>
         )}
 
-        {/* Tab 3: GitHub */}
+        {/* Tab 3: GitHub & PR Check Webhooks */}
         {activeTab === 'github' && (
-          <div className="space-y-4 max-w-xl text-xs font-sans">
+          <div className="space-y-5 max-w-2xl text-xs font-sans">
             <div className="flex items-center gap-3 p-3 bg-surface-subtle border border-border rounded dark:bg-[#151C17] dark:border-border-dark">
-              <Github className="w-5 h-5 text-text-primary dark:text-white" />
-              <div>
+              <Github className="w-5 h-5 text-text-primary dark:text-white shrink-0" />
+              <div className="min-w-0">
                 <div className="font-semibold text-text-primary dark:text-white">GitHub Integration</div>
-                <div className="text-text-muted text-xs">Read-only repository access via Supabase OAuth</div>
+                <div className="text-text-muted text-xs">
+                  Authenticated repository access via Supabase OAuth
+                </div>
               </div>
             </div>
+
+            {project?.id ? (
+              <div className="p-4 rounded-lg border border-border bg-surface-subtle/60 dark:bg-[#151C17] dark:border-border-dark space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <GitPullRequest className="w-4 h-4 text-forest" />
+                    <span className="text-sm font-medium text-text-primary dark:text-white">
+                      Automated GitHub PR Checks
+                    </span>
+                  </div>
+                  <Badge variant={prChecksEnabled ? 'success' : 'neutral'} size="xs">
+                    {prChecksEnabled ? 'Enabled' : 'Disabled'}
+                  </Badge>
+                </div>
+
+                <p className="text-xs text-text-secondary">
+                  Evaluate incoming GitHub Pull Requests against your repository dependency graph whenever a PR opens or updates.
+                </p>
+
+                {prSettingsError && (
+                  <div className="p-2.5 rounded border border-copper/40 bg-copper/5 text-copper flex items-center gap-2">
+                    <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                    <span className="break-words">{prSettingsError}</span>
+                  </div>
+                )}
+
+                {/* Toggles */}
+                <div className="space-y-3 pt-1">
+                  <label className="flex items-start justify-between gap-3 p-3 rounded border border-border bg-surface dark:bg-[#1A221D] cursor-pointer">
+                    <div className="min-w-0">
+                      <span className="font-medium text-text-primary dark:text-white block">
+                        Enable Webhook PR Checks
+                      </span>
+                      <span className="text-[11px] text-text-muted">
+                        Verify HMAC-signed GitHub pull_request webhooks and persist PR impact reports automatically.
+                      </span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={prChecksEnabled}
+                      disabled={isLoadingPrSettings || isSavingPrSettings}
+                      onChange={(e) => patchPrSettings({ prChecksEnabled: e.target.checked })}
+                      className="mt-1 h-4 w-4 accent-forest shrink-0"
+                    />
+                  </label>
+
+                  <label className="flex items-start justify-between gap-3 p-3 rounded border border-border bg-surface dark:bg-[#1A221D] cursor-pointer">
+                    <div className="min-w-0">
+                      <span className="font-medium text-text-primary dark:text-white block">
+                        Publish Compact Commit Status to GitHub
+                      </span>
+                      <span className="text-[11px] text-text-muted">
+                        Posts a concise commit status linking to the MarrowNode PR report when your OAuth token permits status writes.
+                      </span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={prCheckAutoPublish}
+                      disabled={isLoadingPrSettings || isSavingPrSettings}
+                      onChange={(e) => patchPrSettings({ prCheckAutoPublish: e.target.checked })}
+                      className="mt-1 h-4 w-4 accent-forest shrink-0"
+                    />
+                  </label>
+                </div>
+
+                {/* Webhook Endpoint & Secret Management */}
+                {webhookUrl && (
+                  <div className="space-y-3 pt-2 border-t border-border/70">
+                    <div>
+                      <label className="block text-[11px] font-medium text-text-secondary mb-1">
+                        GitHub Webhook Payload URL
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          readOnly
+                          value={webhookUrl}
+                          className="flex-1 min-w-0 px-2.5 py-1.5 rounded border border-border bg-surface font-mono text-[11px] text-text-primary dark:bg-[#1A221D]"
+                        />
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => handleCopy('url', webhookUrl)}
+                        >
+                          {copiedField === 'url' ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <label className="text-[11px] font-medium text-text-secondary">
+                          Webhook Secret (HMAC-SHA256)
+                        </label>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          disabled={isSavingPrSettings}
+                          onClick={() => patchPrSettings({ rotateWebhookSecret: true })}
+                        >
+                          <KeyRound className="w-3 h-3 mr-1" />
+                          {maskedSecret ? 'Rotate Secret' : 'Generate Secret'}
+                        </Button>
+                      </div>
+
+                      {maskedSecret ? (
+                        <div className="text-[11px] font-mono text-text-muted">
+                          Configured secret: <span className="text-text-primary">{maskedSecret}</span>
+                        </div>
+                      ) : (
+                        <div className="text-[11px] text-text-muted">
+                          No project webhook secret generated yet. Enable PR Checks or click Generate Secret.
+                        </div>
+                      )}
+
+                      {plaintextSecretOnce && (
+                        <div className="mt-2 p-3 rounded border border-forest/40 bg-forest/10 space-y-1.5">
+                          <div className="text-[11px] font-semibold text-forest">
+                            Copy this webhook secret now — it will not be shown again:
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <code className="flex-1 min-w-0 font-mono text-[11px] text-text-primary break-all">
+                              {plaintextSecretOnce}
+                            </code>
+                            <Button
+                              variant="primary"
+                              size="sm"
+                              onClick={() => handleCopy('secret', plaintextSecretOnce)}
+                            >
+                              {copiedField === 'secret' ? (
+                                <Check className="w-3.5 h-3.5" />
+                              ) : (
+                                <Copy className="w-3.5 h-3.5" />
+                              )}
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="text-[11px] text-text-muted space-y-1 pt-1">
+                      <div className="font-medium text-text-secondary">GitHub Repository Setup:</div>
+                      <p>
+                        Repo Settings → Webhooks → Add webhook → Content type: <code>application/json</code> → Secret above → Let me select individual events → <strong>Pull requests</strong>.
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p className="text-xs text-text-muted">
+                Connect or select a project to configure GitHub PR Check webhooks.
+              </p>
+            )}
           </div>
         )}
 

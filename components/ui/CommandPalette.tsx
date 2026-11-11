@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Search, FileCode, Network, GitCommit, HelpCircle, CornerDownLeft, X } from 'lucide-react';
+import { Search, FileCode, Network, GitCommit, HelpCircle, CornerDownLeft, X, Compass, GitPullRequest } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 
 interface CommandPaletteProps {
@@ -32,6 +32,8 @@ export function CommandPalette({ isOpen, onClose, onSelectAction }: CommandPalet
 
   const quickActions = [
     { type: 'view' as const, label: 'Overview', target: 'overview', category: 'Navigation', icon: <Network className="w-3.5 h-3.5 text-forest" /> },
+    { type: 'view' as const, label: 'Developer Onboarding', target: 'onboarding', category: 'Navigation', icon: <Compass className="w-3.5 h-3.5 text-forest" /> },
+    { type: 'view' as const, label: 'GitHub PR Check', target: 'pull-requests', category: 'Navigation', icon: <GitPullRequest className="w-3.5 h-3.5 text-forest" /> },
     { type: 'view' as const, label: 'Project Structure', target: 'architecture', category: 'Navigation', icon: <Network className="w-3.5 h-3.5 text-forest" /> },
     { type: 'view' as const, label: 'Project Files', target: 'explorer', category: 'Navigation', icon: <FileCode className="w-3.5 h-3.5 text-text-muted" /> },
     { type: 'view' as const, label: 'Project History', target: 'timeline', category: 'Navigation', icon: <GitCommit className="w-3.5 h-3.5 text-copper" /> },

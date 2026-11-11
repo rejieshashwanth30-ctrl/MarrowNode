@@ -18,6 +18,8 @@ import { EvidenceExplorer } from '@/components/EvidenceExplorer';
 import { RepositoryExplorer } from '@/components/RepositoryExplorer';
 import { AskProjectInterface } from '@/components/AskProjectInterface';
 import { ProjectSettings } from '@/components/ProjectSettings';
+import { DeveloperOnboarding } from '@/components/DeveloperOnboarding';
+import { PullRequestListPanel } from '@/components/PullRequestListPanel';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import {
@@ -33,6 +35,8 @@ import {
   AlertCircle,
   Play,
   CheckCircle2,
+  Compass,
+  GitPullRequest,
 } from 'lucide-react';
 
 export default function DashboardPage() {
@@ -52,6 +56,39 @@ export default function DashboardPage() {
   const [showRepoModal, setShowRepoModal] = useState(false);
 
   const [syncStatusMessage, setSyncStatusMessage] = useState<string | null>(null);
+  const [focusedFilePath, setFocusedFilePath] = useState<string | undefined>(undefined);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const viewParam = params.get('view');
+    const fileParam = params.get('file');
+    if (fileParam) {
+      setFocusedFilePath(fileParam);
+    }
+    const validViews: DashboardView[] = [
+      'overview',
+      'onboarding',
+      'explorer',
+      'architecture',
+      'timeline',
+      'ask',
+      'impact',
+      'pull-requests',
+      'evidence',
+      'settings',
+    ];
+    if (viewParam && validViews.includes(viewParam as DashboardView)) {
+      setActiveView(viewParam as DashboardView);
+    }
+  }, []);
+
+  const handleNavigateIntel = (view: DashboardView, targetPath?: string) => {
+    if (targetPath && targetPath !== '/') {
+      setFocusedFilePath(targetPath);
+    }
+    setActiveView(view);
+  };
 
   const fetchProjectContext = async (projectId: string) => {
     try {
@@ -477,6 +514,47 @@ export default function DashboardPage() {
                   onConnectRepo={() => setShowRepoModal(true)}
                 />
 
+                {/* 3B. Onboarding & Pull Request Workflows Quick Entry */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
+                  <button
+                    type="button"
+                    onClick={() => setActiveView('onboarding')}
+                    className="text-left p-4 rounded-lg border border-border bg-surface hover:border-forest/50 hover:bg-forest/5 transition-all flex items-center justify-between gap-3 dark:bg-[#151C17] dark:border-border-dark"
+                  >
+                    <div className="flex items-start gap-3 min-w-0">
+                      <Compass className="w-5 h-5 text-forest shrink-0 mt-0.5" />
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium text-text-primary dark:text-white">
+                          Developer Onboarding
+                        </div>
+                        <p className="text-xs text-text-muted mt-0.5 break-words">
+                          Start-here guide, key files, architecture areas, auth &amp; data flows
+                        </p>
+                      </div>
+                    </div>
+                    <ArrowRight className="w-4 h-4 text-text-muted shrink-0" />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setActiveView('pull-requests')}
+                    className="text-left p-4 rounded-lg border border-border bg-surface hover:border-forest/50 hover:bg-forest/5 transition-all flex items-center justify-between gap-3 dark:bg-[#151C17] dark:border-border-dark"
+                  >
+                    <div className="flex items-start gap-3 min-w-0">
+                      <GitPullRequest className="w-5 h-5 text-copper shrink-0 mt-0.5" />
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium text-text-primary dark:text-white">
+                          GitHub PR Check
+                        </div>
+                        <p className="text-xs text-text-muted mt-0.5 break-words">
+                          Evaluate PR blast radius, deleted/renamed callers &amp; schema changes
+                        </p>
+                      </div>
+                    </div>
+                    <ArrowRight className="w-4 h-4 text-text-muted shrink-0" />
+                  </button>
+                </div>
+
                 {/* 4. Two-Column Dashboard Overview Widgets */}
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6">
                   {/* Left: Project Structure Preview */}
@@ -544,10 +622,26 @@ export default function DashboardPage() {
               </div>
             ) : null}
 
+            {/* VIEW 1B: DEVELOPER ONBOARDING */}
+            {activeView === 'onboarding' && (
+              <div className="animate-in fade-in-50 duration-150">
+                <DeveloperOnboarding
+                  projectId={selectedProject?.id}
+                  hasProject={Boolean(selectedProject)}
+                  isAnalyzing={isAnalyzing || selectedProject?.analysisStatus === 'RUNNING'}
+                  onConnectRepo={() => setShowRepoModal(true)}
+                  onSyncProject={handleSyncProject}
+                  onNavigateView={handleNavigateIntel}
+                />
+              </div>
+            )}
+
             {/* VIEW 2: REPOSITORY EXPLORER */}
             {activeView === 'explorer' && (
               <div className="animate-in fade-in-50 duration-150">
                 <RepositoryExplorer
+                  key={focusedFilePath || 'default-explorer'}
+                  initialFile={focusedFilePath}
                   fileTree={projectContext?.fileTree || []}
                   hasProject={Boolean(selectedProject)}
                   isAnalyzing={isAnalyzing || selectedProject?.analysisStatus === 'RUNNING'}
@@ -599,12 +693,26 @@ export default function DashboardPage() {
               <div className="animate-in fade-in-50 duration-150">
                 <ChangeImpactAnalysis
                   projectId={selectedProject?.id}
+                  initialFile={focusedFilePath}
                   hasAnalyzedProject={latestAnalysis && latestAnalysis.status === 'COMPLETED'}
                   hasProject={Boolean(selectedProject)}
                   isAnalyzing={isAnalyzing || selectedProject?.analysisStatus === 'RUNNING'}
                   modules={projectContext?.modules || []}
                   fileTree={projectContext?.fileTree || []}
                   onConnectRepo={() => setShowRepoModal(true)}
+                />
+              </div>
+            )}
+
+            {/* VIEW 6B: GITHUB PR CHECK */}
+            {activeView === 'pull-requests' && (
+              <div className="animate-in fade-in-50 duration-150">
+                <PullRequestListPanel
+                  projectId={selectedProject?.id}
+                  hasProject={Boolean(selectedProject)}
+                  onConnectRepo={() => setShowRepoModal(true)}
+                  onSyncProject={handleSyncProject}
+                  onNavigateView={handleNavigateIntel}
                 />
               </div>
             )}
