@@ -33,7 +33,7 @@ interface ProjectHeaderProps {
     analysisStatus?: string;
     lastAnalyzedAt?: string | Date | null;
   } | null;
-  freshness?: 'CURRENT' | 'STALE' | 'ANALYZING' | 'PARTIAL' | 'FAILED';
+  freshness?: 'CURRENT' | 'STALE' | 'ANALYZING' | 'PARTIAL' | 'FAILED' | 'UNVERIFIED';
   onRefresh?: () => void;
   isRefreshing?: boolean;
   onAnalyze?: () => void;
@@ -148,9 +148,20 @@ export function ProjectHeader({
                   variant="copper"
                   size="sm"
                   className="font-sans font-medium text-[10px]"
-                  title="Newer commits exist on GitHub since the last analysis"
+                  title="Repository has changed since this analysis"
                 >
-                  New changes available
+                  Outdated — Sync needed
+                </Badge>
+              )}
+
+              {freshness === 'UNVERIFIED' && (
+                <Badge
+                  variant="neutral"
+                  size="sm"
+                  className="font-sans font-medium text-[10px]"
+                  title="Repository freshness could not be verified"
+                >
+                  Freshness unverified
                 </Badge>
               )}
 

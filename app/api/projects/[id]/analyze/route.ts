@@ -2,8 +2,9 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { getUserProject } from '@/lib/services/projects';
 import { createAnalysisRun } from '@/lib/services/analysis';
-import { getGitHubTokenForCurrentUser } from '@/lib/github/client';
+import { getGitHubTokenForCurrentUser, githubCache } from '@/lib/github/client';
 import { executeDeterministicAnalysis } from '@/lib/github/analysis';
+import { getSafeErrorResponse } from '@/lib/errors';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,19 +12,16 @@ export const dynamic = 'force-dynamic';
  * POST /api/projects/[id]/analyze
  *
  * Initiates the deterministic codebase analysis pipeline for an owned project.
- * Analyzes repository tree, dependencies, frameworks, and git activity via GitHub API.
- * Persists results into Neon PostgreSQL Analysis & Evidence tables.
  */
 export async function POST(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
-    // 1. Authenticate user
     await requireAuth();
     const projectId = params.id;
 
-    // 2. Validate project ownership strictly
+    // Validate project ownership strictly
     const project = await getUserProject(projectId);
 
     if (!project.githubOwner || !project.githubRepositoryName) {
@@ -33,7 +31,6 @@ export async function POST(
       );
     }
 
-    // 3. Retrieve user's GitHub token
     const { token } = await getGitHubTokenForCurrentUser();
     if (!token) {
       return NextResponse.json(
@@ -42,14 +39,33 @@ export async function POST(
       );
     }
 
-    // 4. Create an Analysis run record in Neon
+    // Prevent concurrent duplicate analysis runs
+    const activeRun = project.analyses.find(
+      (a) =>
+        a.status === 'RUNNING' &&
+        Date.now() - new Date(a.createdAt).getTime() < 2 * 60 * 1000
+    );
+    if (activeRun) {
+      return NextResponse.json({
+        success: true,
+        alreadyRunning: true,
+        analysisId: activeRun.id,
+        status: 'RUNNING',
+      });
+    }
+
+    githubCache.invalidateRepo(project.githubOwner, project.githubRepositoryName);
+
     const analysis = await createAnalysisRun(projectId, {
       status: 'RUNNING',
+      analyzerVersion: 'v2.0',
       startedAt: new Date(),
     });
 
-    // 5. Execute deterministic analysis
-    // Run the pipeline and return results
+    console.info(
+      `[MarrowNode Analyze] started projectId=${projectId} analysisId=${analysis.id}`
+    );
+
     const result = await executeDeterministicAnalysis({
       token,
       projectId,
@@ -65,11 +81,11 @@ export async function POST(
       result,
     });
   } catch (error: any) {
-    console.error('[MarrowNode Project Analyze Error]:', error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Analysis failed' },
-      { status: error.statusCode || 500 }
+    const safe = getSafeErrorResponse(
+      error,
+      'Repository analysis could not be completed. Please try again.',
+      `analyze.POST projectId=${params.id}`
     );
+    return NextResponse.json({ error: safe.message }, { status: safe.statusCode });
   }
 }
-

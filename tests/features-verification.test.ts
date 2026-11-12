@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
 
 import {
   generateWebhookSecret,
@@ -17,8 +19,13 @@ import {
   assembleDeveloperOnboardingReport,
   type RawEvidenceExtract,
 } from '../lib/services/onboarding';
-import type { DependencyEdge } from '../lib/analysis/graph-engine';
+import { DependencyGraphEngine, type DependencyEdge } from '../lib/analysis/graph-engine';
+import { parseSourceFileAST } from '../lib/analysis/ast-parser';
+import { parseTsConfig, resolveImportSpecifier } from '../lib/analysis/path-resolver';
+import { synthesizeAskAnswerPure } from '../lib/services/ai-query';
+import { getSafeErrorResponse } from '../lib/errors';
 import type { ProjectWorkstationContext } from '../lib/services/project-context';
+import type { FileTreeNode } from '../types';
 import { prisma } from '../lib/prisma';
 
 function makeBaseContext(overrides?: Partial<ProjectWorkstationContext>): ProjectWorkstationContext {
@@ -688,4 +695,206 @@ test('PostgreSQL multi-tenant isolation & (repositoryId, prNumber, headSha) uniq
       where: { id: { in: [userA.id, userB.id] } },
     });
   }
+});
+
+// =========================================================================
+// 5. ERROR SANITIZATION & REAL-REPOSITORY GROUND TRUTH TESTS (#50, #56-59)
+// =========================================================================
+test('getSafeErrorResponse masks internal Prisma/SQL/token details from client responses', () => {
+  const err1 = new Error('Invalid `prisma.project.findFirst()` invocation: column projects.isActive does not exist');
+  const safe1 = getSafeErrorResponse(err1, 'Operation failed cleanly.');
+  assert.equal(safe1.message, 'Operation failed cleanly.');
+  assert.equal(safe1.statusCode, 500);
+
+  const err2 = new Error('PostgreSQL connection ECONNREFUSED 52.14.39.200:5432');
+  const safe2 = getSafeErrorResponse(err2, 'Database busy.');
+  assert.equal(safe2.message, 'Database busy.');
+});
+
+test('Ask MarrowNode rejects database hallucinations on static non-DB repos & answers negative DB questions truthfully', () => {
+  const noDbCtx = makeBaseContext({
+    project: {
+      ...makeBaseContext().project,
+      database: null,
+    },
+    dependencies: ['next', 'react', 'zod'],
+    fileTree: [
+      { id: 'package.json', name: 'package.json', path: 'package.json', type: 'file' },
+      { id: 'app/page.tsx', name: 'page.tsx', path: 'app/page.tsx', type: 'file' },
+    ],
+  });
+
+  const dbAns = synthesizeAskAnswerPure({
+    context: noDbCtx,
+    dependencyEdges: [],
+    query: 'What database does this project use?',
+  });
+  assert.ok(dbAns.fact?.includes("couldn't verify any database"));
+  assert.ok(!dbAns.answer.toLowerCase().includes('uses database storage'));
+
+  const negAns = synthesizeAskAnswerPure({
+    context: noDbCtx,
+    dependencyEdges: [],
+    query: 'Does this project use MongoDB?',
+  });
+  assert.ok(negAns.fact?.startsWith('No.'));
+});
+
+test('Real MarrowNode codebase Ground Truth (#56, #57, #58, #59): AST parse, Ask, and Change Impact', () => {
+  const repoRoot = path.resolve(__dirname, '..');
+  // In compiled scratch/test-build location fallback to D:/MarrowNode V1 cleanly if needed
+  const rootDir = fs.existsSync(path.join(repoRoot, 'package.json'))
+    ? repoRoot
+    : 'D:/MarrowNode V1';
+
+  const walkFiles = (dir: string, rel = ''): string[] => {
+    const out: string[] = [];
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (['node_modules', '.next', '.git', '.vercel', 'tests'].includes(entry.name)) continue;
+      const nextRel = rel ? `${rel}/${entry.name}` : entry.name;
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        out.push(...walkFiles(full, nextRel));
+      } else {
+        out.push(nextRel);
+      }
+    }
+    return out;
+  };
+
+  const t0 = Date.now();
+  const allFiles = walkFiles(rootDir);
+  const allFileSet = new Set(allFiles);
+  const pkgRaw = JSON.parse(fs.readFileSync(path.join(rootDir, 'package.json'), 'utf8'));
+  const declaredDeps = Object.keys({ ...(pkgRaw.dependencies || {}), ...(pkgRaw.devDependencies || {}) });
+  const tsconfig = parseTsConfig(fs.readFileSync(path.join(rootDir, 'tsconfig.json'), 'utf8'));
+
+  const edges: DependencyEdge[] = [];
+  const sourceFiles = allFiles.filter((f) => /\.(ts|tsx)$/.test(f) && !f.endsWith('.d.ts'));
+
+  for (const sf of sourceFiles) {
+    const content = fs.readFileSync(path.join(rootDir, sf), 'utf8');
+    const parsed = parseSourceFileAST(sf, content);
+    for (const imp of parsed.imports) {
+      const res = resolveImportSpecifier({
+        specifier: imp.specifier,
+        importingFilePath: sf,
+        allRepoFiles: allFileSet,
+        tsconfig,
+      });
+      if (!res.isExternal && res.resolvedPath && allFileSet.has(res.resolvedPath)) {
+        edges.push({
+          id: `${sf}->${res.resolvedPath}:${imp.line}`,
+          source: sf,
+          target: res.resolvedPath,
+          line: imp.line,
+          symbols: imp.symbols,
+          relationship: imp.isTypeOnly ? 'type-imports' : 'imports',
+          confidence: 1.0,
+        });
+      }
+    }
+    for (const exp of parsed.exports) {
+      if (!exp.reExportFrom) continue;
+      const res = resolveImportSpecifier({
+        specifier: exp.reExportFrom,
+        importingFilePath: sf,
+        allRepoFiles: allFileSet,
+        tsconfig,
+      });
+      if (!res.isExternal && res.resolvedPath && allFileSet.has(res.resolvedPath)) {
+        edges.push({
+          id: `reexp-${sf}->${res.resolvedPath}:${exp.line}`,
+          source: sf,
+          target: res.resolvedPath,
+          line: exp.line,
+          symbols: [exp.name],
+          relationship: 're-exports',
+          confidence: 1.0,
+        });
+      }
+    }
+  }
+  const parseMs = Date.now() - t0;
+
+  assert.ok(sourceFiles.length >= 40, `Expected >=40 TS/TSX files in real repo, found ${sourceFiles.length}`);
+  assert.ok(edges.length >= 60, `Expected >=60 verified real AST edges, found ${edges.length}`);
+
+  // Build real FileTreeNode[] + context for Ask tests
+  const realFileTree: FileTreeNode[] = allFiles.map((f) => ({
+    id: f,
+    name: f.split('/').pop() || f,
+    path: f,
+    type: 'file',
+  }));
+
+  const realCtx = makeBaseContext({
+    project: {
+      ...makeBaseContext().project,
+      name: 'MarrowNode V1',
+      primaryLanguage: 'TypeScript',
+      framework: 'Next.js',
+      database: 'PostgreSQL (Prisma)',
+    },
+    fileTree: realFileTree,
+    dependencies: declaredDeps,
+    modules: ['app', 'components', 'lib', 'prisma'],
+    coverage: {
+      ...makeBaseContext().coverage!,
+      files: {
+        discovered: allFiles.length,
+        source: sourceFiles.length,
+        parsed: sourceFiles.length,
+        failed: 0,
+        ignored: 0,
+        coveragePercent: 100,
+      },
+    },
+    summary: {
+      totalFiles: allFiles.length,
+      topLanguage: 'TypeScript',
+      framework: 'Next.js',
+      hasReadme: allFileSet.has('README.md'),
+      readmePreview: null,
+    },
+  });
+
+  // 57. Verify Mandatory Real Ask Questions
+  const qFramework = synthesizeAskAnswerPure({ context: realCtx, dependencyEdges: edges, query: 'What framework does this project use?' });
+  assert.ok(qFramework.fact?.includes('Next.js'));
+
+  const qDatabase = synthesizeAskAnswerPure({ context: realCtx, dependencyEdges: edges, query: 'What database does this project use?' });
+  assert.ok(qDatabase.fact?.includes('PostgreSQL'));
+  assert.ok(qDatabase.citations.some((c) => c.path === 'prisma/schema.prisma'));
+
+  const qNegMongo = synthesizeAskAnswerPure({ context: realCtx, dependencyEdges: edges, query: 'Does this project use MongoDB?' });
+  assert.ok(qNegMongo.fact?.startsWith('No.'));
+
+  const qOAuth = synthesizeAskAnswerPure({ context: realCtx, dependencyEdges: edges, query: 'Where is GitHub OAuth handled?' });
+  assert.ok(qOAuth.fact?.includes('callback') || qOAuth.fact?.includes('auth'));
+
+  const qAuthFiles = synthesizeAskAnswerPure({ context: realCtx, dependencyEdges: edges, query: 'Which files handle authentication?' });
+  assert.ok(qAuthFiles.citations.some((c) => c.path.includes('auth')));
+
+  const qWhySupabase = synthesizeAskAnswerPure({ context: realCtx, dependencyEdges: edges, query: 'Why was Supabase chosen?' });
+  assert.ok(qWhySupabase.unknown?.toLowerCase().includes("couldn't verify why"));
+
+  // 58. Verify Real Change Impact on Known Central, Component & Leaf Files
+  const engine = new DependencyGraphEngine(edges);
+  const authBlast = engine.calculateBlastRadius('lib/auth.ts', 'interface');
+  assert.ok(authBlast.directConsumersCount >= 10, `lib/auth.ts should have >=10 real direct consumers, got ${authBlast.directConsumersCount}`);
+  assert.equal(authBlast.blastRating, 'CRITICAL');
+  assert.equal(authBlast.isCoreSubsystem, true);
+
+  const settingsBlast = engine.calculateBlastRadius('components/ProjectSettings.tsx', 'interface');
+  assert.equal(settingsBlast.blastRating, 'LOW');
+  assert.ok(settingsBlast.directConsumers.some((c) => c.path === 'app/dashboard/page.tsx'));
+
+  const healthLeafBlast = engine.calculateBlastRadius('app/api/health/route.ts', 'interface');
+  assert.equal(healthLeafBlast.blastRating, 'ISOLATED');
+  assert.equal(healthLeafBlast.totalAffectedCount, 0);
+
+  console.info(
+    `[Real Repo Ground Truth] files=${allFiles.length} tsxFiles=${sourceFiles.length} edges=${edges.length} astParseMs=${parseMs} authDirect=${authBlast.directConsumersCount} authTotal=${authBlast.totalAffectedCount}`
+  );
 });

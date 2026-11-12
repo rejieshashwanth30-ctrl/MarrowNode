@@ -1,19 +1,22 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth, getOrCreateCurrentProfile } from '@/lib/auth';
 import { getUserProject } from '@/lib/services/projects';
 import { createAnalysisRun } from '@/lib/services/analysis';
-import { getGitHubTokenForCurrentUser, fetchRepoCommits } from '@/lib/github/client';
+import { getGitHubTokenForCurrentUser, fetchRepoCommits, githubCache } from '@/lib/github/client';
 import { executeDeterministicAnalysis } from '@/lib/github/analysis';
+import { invalidateProjectContextCache } from '@/lib/services/project-context';
+import { invalidateOnboardingCache } from '@/lib/services/onboarding';
 import { prisma } from '@/lib/prisma';
+import { getSafeErrorResponse } from '@/lib/errors';
 
 export const dynamic = 'force-dynamic';
 
 /**
  * POST /api/projects/[id]/sync
  *
- * Checks GitHub for the latest commit on the default branch.
- * If unchanged: returns upToDate: true.
- * If changed: triggers deterministic re-analysis and updates repository snapshot.
+ * Checks live GitHub HEAD (bypassing commit cache) on the default branch.
+ * If unchanged & already completed cleanly: returns upToDate: true.
+ * If changed (or force=true): triggers idempotent deterministic re-analysis.
  */
 export async function POST(
   request: NextRequest,
@@ -21,6 +24,7 @@ export async function POST(
 ) {
   try {
     await requireAuth();
+    const profile = await getOrCreateCurrentProfile();
     const projectId = params.id;
 
     // Validate project ownership strictly
@@ -41,29 +45,63 @@ export async function POST(
       );
     }
 
-    // Check latest commit on GitHub
+    // Prevent concurrent duplicate runs triggered by double-clicks
+    const activeRun = project.analyses.find(
+      (a) =>
+        a.status === 'RUNNING' &&
+        Date.now() - new Date(a.createdAt).getTime() < 2 * 60 * 1000
+    );
+    if (activeRun) {
+      return NextResponse.json({
+        success: true,
+        alreadyRunning: true,
+        analysisId: activeRun.id,
+        message: 'Repository synchronization and analysis is already in progress.',
+      });
+    }
+
+    const body = await request.json().catch(() => ({}));
+    const force = Boolean(body?.force);
+
+    // Clear stale GitHub cache before probing live HEAD
+    githubCache.invalidateRepo(project.githubOwner, project.githubRepositoryName);
+
     const recentCommits = await fetchRepoCommits(
       token,
       project.githubOwner,
       project.githubRepositoryName,
-      1
-    ).catch(() => []);
+      1,
+      {
+        branch: project.defaultBranch || 'main',
+        bypassCache: true,
+        userScope: profile.id,
+      }
+    );
 
     const remoteSha = recentCommits[0]?.sha || null;
-    const localSha = project.repository?.currentCommitSha || project.analyses[0]?.commitSha || null;
+    const latestCompleted = project.analyses.find((a) => a.status === 'COMPLETED') || null;
+    const localSha = latestCompleted?.commitSha || project.repository?.currentCommitSha || null;
 
-    // If commit hasn't changed and previous analysis succeeded
     if (
+      !force &&
       remoteSha &&
       localSha &&
       remoteSha === localSha &&
-      project.analysisStatus === 'COMPLETED'
+      latestCompleted?.status === 'COMPLETED'
     ) {
-      // Update lastSyncedAt
-      await prisma.repository.updateMany({
-        where: { projectId },
-        data: { lastSyncedAt: new Date() },
-      }).catch(() => {});
+      await prisma.repository
+        .updateMany({
+          where: { projectId },
+          data: { lastSyncedAt: new Date(), currentCommitSha: remoteSha },
+        })
+        .catch(() => {});
+
+      invalidateProjectContextCache(projectId);
+      invalidateOnboardingCache(projectId);
+
+      console.info(
+        `[MarrowNode Sync] upToDate projectId=${projectId} commit=${remoteSha.substring(0, 7)}`
+      );
 
       return NextResponse.json({
         success: true,
@@ -73,11 +111,15 @@ export async function POST(
       });
     }
 
-    // New commit detected or initial sync: run analysis
     const analysis = await createAnalysisRun(projectId, {
       status: 'RUNNING',
+      analyzerVersion: 'v2.0',
       startedAt: new Date(),
     });
+
+    console.info(
+      `[MarrowNode Sync] started projectId=${projectId} analysisId=${analysis.id} targetSha=${remoteSha || 'HEAD'}`
+    );
 
     const result = await executeDeterministicAnalysis({
       token,
@@ -91,17 +133,17 @@ export async function POST(
       success: true,
       upToDate: false,
       reanalyzed: true,
-      message: `Synchronized and indexed new commit ${remoteSha ? remoteSha.substring(0, 7) : 'HEAD'}.`,
+      message: `Synchronized and indexed commit ${remoteSha ? remoteSha.substring(0, 7) : 'HEAD'}.`,
       analysisId: analysis.id,
       commitSha: remoteSha,
       result,
     });
   } catch (error: any) {
-    console.error('[MarrowNode Sync Route Error]:', error);
-    return NextResponse.json(
-      { error: error?.message || 'Repository sync failed' },
-      { status: error?.statusCode || 500 }
+    const safe = getSafeErrorResponse(
+      error,
+      'Repository synchronization could not be completed. Please try again.',
+      `sync.POST projectId=${params.id}`
     );
+    return NextResponse.json({ error: safe.message }, { status: safe.statusCode });
   }
 }
-

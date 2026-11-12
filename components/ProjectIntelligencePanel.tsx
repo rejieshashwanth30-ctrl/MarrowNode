@@ -24,6 +24,12 @@ export function ProjectIntelligencePanel({
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<any | null>(null);
 
+  React.useEffect(() => {
+    setQuery('');
+    setResult(null);
+    setLoading(false);
+  }, [projectId]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!query.trim() || !projectId || loading) return;

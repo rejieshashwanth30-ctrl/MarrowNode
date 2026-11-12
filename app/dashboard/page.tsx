@@ -155,6 +155,12 @@ export default function DashboardPage() {
 
   const handleSelectProject = async (projectId: string) => {
     setSelectedProjectId(projectId);
+    // Clear previous project state immediately so stale data never flashes across switches
+    setProjectContext(null);
+    setAnalysisError(null);
+    setSyncStatusMessage(null);
+    setFocusedFilePath(undefined);
+    setIsLoadingContext(true);
     try {
       // Authoritatively persist active project switch to server Neon database
       const res = await fetch('/api/projects/active', {
@@ -170,6 +176,8 @@ export default function DashboardPage() {
       }
     } catch (_) {
       await fetchProjectContext(projectId);
+    } finally {
+      setIsLoadingContext(false);
     }
   };
 
@@ -290,6 +298,31 @@ export default function DashboardPage() {
             isAnalyzing={isAnalyzing}
             onConnectRepo={() => setShowRepoModal(true)}
           />
+
+          {/* Mandatory Stale / Unverified Freshness Disclosure */}
+          {selectedProject &&
+            (projectContext?.latestAnalysis?.freshness === 'STALE' ||
+              projectContext?.latestAnalysis?.freshness === 'UNVERIFIED') && (
+              <div className="p-3 mx-3 sm:mx-6 mt-3 rounded bg-amber-500/10 border border-amber-500/30 text-amber-800 dark:text-amber-300 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 font-sans">
+                <div className="flex items-start sm:items-center gap-2 min-w-0">
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 sm:mt-0" />
+                  <span className="break-words">
+                    {projectContext.latestAnalysis.freshness === 'STALE'
+                      ? 'Repository has changed since this analysis.'
+                      : 'Repository freshness could not be verified.'}
+                  </span>
+                </div>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={handleSyncProject}
+                  disabled={isRefreshing || isAnalyzing}
+                  className="shrink-0 self-start sm:self-center text-xs"
+                >
+                  Sync &amp; Re-analyze
+                </Button>
+              </div>
+            )}
 
           {/* Sync status alert */}
           {syncStatusMessage && (
@@ -509,8 +542,12 @@ export default function DashboardPage() {
 
                 {/* 3. Ask MarrowNode Panel */}
                 <ProjectIntelligencePanel
+                  key={selectedProject.id}
                   projectId={selectedProject.id}
-                  hasAnalyzedProject={latestAnalysis && latestAnalysis.status === 'COMPLETED'}
+                  hasAnalyzedProject={Boolean(
+                    projectContext?.latestAnalysis?.status === 'COMPLETED' ||
+                      latestAnalysis?.status === 'COMPLETED'
+                  )}
                   onConnectRepo={() => setShowRepoModal(true)}
                 />
 
@@ -626,6 +663,7 @@ export default function DashboardPage() {
             {activeView === 'onboarding' && (
               <div className="animate-in fade-in-50 duration-150">
                 <DeveloperOnboarding
+                  key={selectedProject?.id || 'no-proj-onboarding'}
                   projectId={selectedProject?.id}
                   hasProject={Boolean(selectedProject)}
                   isAnalyzing={isAnalyzing || selectedProject?.analysisStatus === 'RUNNING'}
@@ -640,7 +678,7 @@ export default function DashboardPage() {
             {activeView === 'explorer' && (
               <div className="animate-in fade-in-50 duration-150">
                 <RepositoryExplorer
-                  key={focusedFilePath || 'default-explorer'}
+                  key={`${selectedProject?.id || 'none'}:${focusedFilePath || 'default-explorer'}`}
                   initialFile={focusedFilePath}
                   fileTree={projectContext?.fileTree || []}
                   hasProject={Boolean(selectedProject)}
@@ -654,6 +692,7 @@ export default function DashboardPage() {
             {activeView === 'architecture' && (
               <div className="animate-in fade-in-50 duration-150">
                 <ArchitectureGraph
+                  key={selectedProject?.id || 'no-proj-arch'}
                   nodes={projectContext?.nodes || []}
                   edges={projectContext?.edges || []}
                   hasProject={Boolean(selectedProject)}
@@ -667,6 +706,7 @@ export default function DashboardPage() {
             {activeView === 'timeline' && (
               <div className="animate-in fade-in-50 duration-150">
                 <ProjectTimeline
+                  key={selectedProject?.id || 'no-proj-timeline'}
                   events={projectContext?.timeline || []}
                   hasProject={Boolean(selectedProject)}
                   isAnalyzing={isAnalyzing || selectedProject?.analysisStatus === 'RUNNING'}
@@ -679,8 +719,12 @@ export default function DashboardPage() {
             {activeView === 'ask' && (
               <div className="animate-in fade-in-50 duration-150">
                 <AskProjectInterface
+                  key={selectedProject?.id || 'no-proj-ask'}
                   projectId={selectedProject?.id}
-                  hasAnalyzedProject={latestAnalysis && latestAnalysis.status === 'COMPLETED'}
+                  hasAnalyzedProject={Boolean(
+                    projectContext?.latestAnalysis?.status === 'COMPLETED' ||
+                      latestAnalysis?.status === 'COMPLETED'
+                  )}
                   hasProject={Boolean(selectedProject)}
                   isAnalyzing={isAnalyzing || selectedProject?.analysisStatus === 'RUNNING'}
                   onConnectRepo={() => setShowRepoModal(true)}
@@ -692,9 +736,13 @@ export default function DashboardPage() {
             {activeView === 'impact' && (
               <div className="animate-in fade-in-50 duration-150">
                 <ChangeImpactAnalysis
+                  key={selectedProject?.id || 'no-proj-impact'}
                   projectId={selectedProject?.id}
                   initialFile={focusedFilePath}
-                  hasAnalyzedProject={latestAnalysis && latestAnalysis.status === 'COMPLETED'}
+                  hasAnalyzedProject={Boolean(
+                    projectContext?.latestAnalysis?.status === 'COMPLETED' ||
+                      latestAnalysis?.status === 'COMPLETED'
+                  )}
                   hasProject={Boolean(selectedProject)}
                   isAnalyzing={isAnalyzing || selectedProject?.analysisStatus === 'RUNNING'}
                   modules={projectContext?.modules || []}
@@ -708,6 +756,7 @@ export default function DashboardPage() {
             {activeView === 'pull-requests' && (
               <div className="animate-in fade-in-50 duration-150">
                 <PullRequestListPanel
+                  key={selectedProject?.id || 'no-proj-pr'}
                   projectId={selectedProject?.id}
                   hasProject={Boolean(selectedProject)}
                   onConnectRepo={() => setShowRepoModal(true)}

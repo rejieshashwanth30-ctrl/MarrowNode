@@ -2,6 +2,8 @@ import { prisma } from '@/lib/prisma';
 import { getOrCreateCurrentProfile, AuthError } from '@/lib/auth';
 import { getActiveUserProject } from '@/lib/services/projects';
 import { telemetry } from '@/lib/observability/timing';
+import { verifyRepositoryHeadSha } from '@/lib/github/client';
+import { getServerGitHubTokenForUser } from '@/lib/github/pr-client';
 import type {
   FileTreeNode,
   ArchitectureNode,
@@ -12,7 +14,7 @@ import type {
   AnalysisCoverage,
 } from '@/types';
 
-// In-memory workstation context cache with TTL
+// In-memory workstation context cache with short TTL
 // Keyed strictly by `${userId}:${projectId}:${latestAnalysisId || 'none'}`
 interface CachedWorkstationContext {
   context: ProjectWorkstationContext;
@@ -20,19 +22,31 @@ interface CachedWorkstationContext {
 }
 
 const contextCache = new Map<string, CachedWorkstationContext>();
-const CONTEXT_CACHE_TTL_MS = 3 * 60 * 1000; // 3 minutes
+const CONTEXT_CACHE_TTL_MS = 30 * 1000; // 30s so live GitHub HEAD stale checks stay accurate without slowing navigation
+
+const contextInvalidationListeners: Array<(projectId?: string) => void> = [];
+export function registerCacheInvalidationListener(fn: (projectId?: string) => void) {
+  contextInvalidationListeners.push(fn);
+}
 
 /**
- * Invalidate cached workstation context for a project or all projects.
+ * Invalidate cached workstation context (and registered derived caches) for a project or all projects.
  */
 export function invalidateProjectContextCache(projectId?: string) {
   if (!projectId) {
     contextCache.clear();
-    return;
+  } else {
+    for (const key of Array.from(contextCache.keys())) {
+      if (key.includes(`:${projectId}:`)) {
+        contextCache.delete(key);
+      }
+    }
   }
-  for (const key of Array.from(contextCache.keys())) {
-    if (key.includes(`:${projectId}:`)) {
-      contextCache.delete(key);
+  for (const listener of contextInvalidationListeners) {
+    try {
+      listener(projectId);
+    } catch {
+      // ignore listener errors cleanly
     }
   }
 }
@@ -62,7 +76,11 @@ export interface ProjectWorkstationContext {
   latestAnalysis: {
     id: string;
     status: string;
-    freshness: 'CURRENT' | 'STALE' | 'ANALYZING' | 'PARTIAL' | 'FAILED';
+    freshness: 'CURRENT' | 'STALE' | 'ANALYZING' | 'PARTIAL' | 'FAILED' | 'UNVERIFIED';
+    freshnessVerified?: boolean;
+    freshnessMessage?: string;
+    liveHeadSha?: string | null;
+    latestRunStatus?: string | null;
     commitSha: string | null;
     branch: string | null;
     analyzerVersion: string | null;
@@ -214,7 +232,7 @@ export async function getProjectWorkstationContext(
           repository: true,
           analyses: {
             orderBy: { createdAt: 'desc' },
-            take: 1,
+            take: 5,
           },
           evidences: {
             orderBy: { createdAt: 'desc' },
@@ -228,7 +246,10 @@ export async function getProjectWorkstationContext(
     throw new AuthError('Project not found or access denied', 404);
   }
 
-  const latestAnalysis = project.analyses[0] || null;
+  // Prefer the latest COMPLETED snapshot as source of truth so failed/in-progress reruns never blind the workspace
+  const rawLatestAnalysis = project.analyses[0] || null;
+  const completedAnalysis = project.analyses.find((a) => a.status === 'COMPLETED') || null;
+  const latestAnalysis = completedAnalysis || rawLatestAnalysis;
   const evidences = project.evidences || [];
 
   // Parse evidence records into workstation objects
@@ -357,7 +378,9 @@ export async function getProjectWorkstationContext(
 
     // 4. Dependencies evidence
     if (ev.type === 'dependencies') {
-      if (Array.isArray(meta.sampleDependencies)) {
+      if (Array.isArray(meta.allDependencies) && meta.allDependencies.length > 0) {
+        dependencies = meta.allDependencies;
+      } else if (Array.isArray(meta.sampleDependencies)) {
         dependencies = meta.sampleDependencies;
       }
 
@@ -457,7 +480,13 @@ export async function getProjectWorkstationContext(
   if (rawCoverage && rawCoverage.files && rawCoverage.imports) {
     computedCoverage = rawCoverage as AnalysisCoverage;
   } else if (latestAnalysis && latestAnalysis.status === 'COMPLETED') {
-    const totalSourceFiles = fileTree.filter((f) => !f.children).length;
+    const countLeafFiles = (items: FileTreeNode[]): number =>
+      items.reduce(
+        (acc, item) =>
+          acc + (item.type === 'file' ? 1 : item.children ? countLeafFiles(item.children) : 0),
+        0
+      );
+    const totalSourceFiles = countLeafFiles(fileTree) || latestAnalysis.filesAnalyzed || 0;
     const parsedSourceFiles = latestAnalysis.filesAnalyzed || totalSourceFiles;
     const sourceCoveragePercent = totalSourceFiles > 0
       ? Math.min(100, Math.round((parsedSourceFiles / totalSourceFiles) * 100))
@@ -537,26 +566,59 @@ export async function getProjectWorkstationContext(
     };
   }
 
-  // 13. Freshness & Stale Detection
-  let freshness: 'CURRENT' | 'STALE' | 'ANALYZING' | 'PARTIAL' | 'FAILED' = 'CURRENT';
+  // 13. Live GitHub HEAD Freshness & Stale Detection
+  let liveHeadSha: string | null = null;
+  let freshnessVerified = false;
+  if (project.githubOwner && project.githubRepositoryName && latestAnalysis?.status === 'COMPLETED') {
+    const ownerToken = await getServerGitHubTokenForUser(profile.id).catch(() => null);
+    const headResult = await verifyRepositoryHeadSha({
+      token: ownerToken,
+      owner: project.githubOwner,
+      repo: project.githubRepositoryName,
+      branch: latestAnalysis.branch || project.defaultBranch || 'main',
+      userScope: profile.id,
+    });
+    liveHeadSha = headResult.headSha;
+    freshnessVerified = headResult.verified;
+  }
+
+  let freshness: 'CURRENT' | 'STALE' | 'ANALYZING' | 'PARTIAL' | 'FAILED' | 'UNVERIFIED' = 'CURRENT';
+  let freshnessMessage = 'Repository analysis matches the latest verified GitHub commit.';
+
   if (!latestAnalysis) {
     freshness = 'STALE';
-  } else if (latestAnalysis.status === 'RUNNING' || latestAnalysis.status === 'PENDING') {
+    freshnessMessage = 'Repository has not been analyzed yet.';
+  } else if (rawLatestAnalysis?.status === 'RUNNING' || rawLatestAnalysis?.status === 'PENDING') {
     freshness = 'ANALYZING';
-  } else if (latestAnalysis.status === 'FAILED') {
+    freshnessMessage = 'Repository analysis is currently in progress.';
+  } else if (!completedAnalysis && rawLatestAnalysis?.status === 'FAILED') {
     freshness = 'FAILED';
+    freshnessMessage = 'The latest analysis attempt failed.';
+  } else if (
+    freshnessVerified &&
+    liveHeadSha &&
+    latestAnalysis.commitSha &&
+    liveHeadSha !== latestAnalysis.commitSha
+  ) {
+    freshness = 'STALE';
+    freshnessMessage = 'Repository has changed since this analysis.';
   } else if (
     project.repository?.currentCommitSha &&
     latestAnalysis.commitSha &&
     project.repository.currentCommitSha !== latestAnalysis.commitSha
   ) {
     freshness = 'STALE';
+    freshnessMessage = 'Repository has changed since this analysis.';
+  } else if (!freshnessVerified && project.githubOwner && project.githubRepositoryName) {
+    freshness = 'UNVERIFIED';
+    freshnessMessage = 'Repository freshness could not be verified.';
   } else if (
     computedCoverage &&
     computedCoverage.files.coveragePercent < 100 &&
     computedCoverage.files.source > computedCoverage.files.parsed
   ) {
     freshness = 'PARTIAL';
+    freshnessMessage = `Partially analyzed: ${computedCoverage.files.parsed}/${computedCoverage.files.source} source files inspected.`;
   } else {
     freshness = 'CURRENT';
   }
@@ -590,9 +652,13 @@ export async function getProjectWorkstationContext(
           id: latestAnalysis.id,
           status: latestAnalysis.status,
           freshness,
+          freshnessVerified,
+          freshnessMessage,
+          liveHeadSha,
+          latestRunStatus: rawLatestAnalysis?.status || latestAnalysis.status,
           commitSha: latestAnalysis.commitSha || null,
           branch: latestAnalysis.branch || project.defaultBranch,
-          analyzerVersion: latestAnalysis.analyzerVersion || 'v1.0',
+          analyzerVersion: latestAnalysis.analyzerVersion || 'v2.0',
           coverage: latestAnalysis.coverage ?? computedCoverage?.overallCoveragePercent ?? null,
           createdAt: latestAnalysis.createdAt,
           filesAnalyzed: latestAnalysis.filesAnalyzed,

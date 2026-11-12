@@ -21,6 +21,7 @@ import {
   createCommitProvenance,
 } from '@/lib/analysis/provenance';
 import { invalidateProjectContextCache } from '@/lib/services/project-context';
+import { invalidateOnboardingCache } from '@/lib/services/onboarding';
 
 // Directories excluded from codebase deep parsing
 const IGNORED_PATH_SEGMENTS = [
@@ -193,9 +194,13 @@ export async function executeDeterministicAnalysis(params: {
     // 2. Fetch Full Git Tree recursively (uncapped)
     const treeData = await telemetry.measure(
       'github.tree_fetch',
-      () => fetchRepoTree(token, owner, repo, latestCommitSha || defaultBranch).catch(() => null),
+      () => fetchRepoTree(token, owner, repo, latestCommitSha || defaultBranch),
       { projectId, analysisId }
     );
+
+    if (!treeData || !Array.isArray(treeData.tree)) {
+      throw new Error('Unable to fetch repository file tree from GitHub.');
+    }
 
     let totalDiscoveredFiles = 0;
     const extensionCounts: Record<string, number> = {};
@@ -272,12 +277,14 @@ export async function executeDeterministicAnalysis(params: {
       }
     }
 
-    // 5. Concurrently Fetch Manifest, README, and Compiler Config (Eliminating waterfall)
+    // 5. Concurrently Fetch Manifest, Schema, README, and Compiler Config (Eliminating waterfall)
     const packageJsonPath = foundManifests.find((p) => p === 'package.json') || foundManifests.find((p) => p.endsWith('package.json'));
+    const prismaSchemaPath = treeFiles.find((f) => f.path.endsWith('schema.prisma'))?.path || null;
+    const reqTxtPath = foundManifests.find((p) => p.endsWith('requirements.txt')) || null;
+    const goModPath = foundManifests.find((p) => p.endsWith('go.mod')) || null;
     const readmeFile = treeFiles.find((f) => /^readme(\.[a-z0-9]+)?$/i.test(f.path.split('/').pop() || ''));
-    const readmePath = readmeFile?.path || null;
 
-    const [pkgContent, readmeContent, tsconfigRaw] = await telemetry.measure(
+    const [pkgContent, readmeContent, tsconfigRaw, prismaSchemaRaw, reqTxtRaw, goModRaw] = await telemetry.measure(
       'github.batch_manifests',
       () =>
         Promise.all([
@@ -290,12 +297,22 @@ export async function executeDeterministicAnalysis(params: {
           fetchRepoFileContent(token, owner, repo, 'tsconfig.json', latestCommitSha || undefined)
             .catch(() => null)
             .then(async (c) => c || (await fetchRepoFileContent(token, owner, repo, 'jsconfig.json', latestCommitSha || undefined).catch(() => null))),
+          prismaSchemaPath
+            ? fetchRepoFileContent(token, owner, repo, prismaSchemaPath, latestCommitSha || undefined).catch(() => null)
+            : Promise.resolve(null),
+          reqTxtPath
+            ? fetchRepoFileContent(token, owner, repo, reqTxtPath, latestCommitSha || undefined).catch(() => null)
+            : Promise.resolve(null),
+          goModPath
+            ? fetchRepoFileContent(token, owner, repo, goModPath, latestCommitSha || undefined).catch(() => null)
+            : Promise.resolve(null),
         ]),
       { projectId, analysisId }
     );
 
-    // Inspect Dependencies & Detect Framework
+    // Inspect Dependencies, Framework & Real Database Provider
     let detectedFramework = 'Generic';
+    let detectedDatabase: string | null = null;
     const detectedDependencies: string[] = [];
 
     if (pkgContent) {
@@ -321,14 +338,56 @@ export async function executeDeterministicAnalysis(params: {
       } catch (_) {}
     }
 
+    if (reqTxtRaw) {
+      for (const line of reqTxtRaw.split(/\r?\n/)) {
+        const clean = line.split('#')[0].trim();
+        if (!clean) continue;
+        const pkgName = clean.split(/[=<>!~[\s]/)[0].trim();
+        if (pkgName && !detectedDependencies.includes(pkgName)) {
+          detectedDependencies.push(pkgName);
+        }
+      }
+    }
+
+    if (goModRaw) {
+      for (const line of goModRaw.split(/\r?\n/)) {
+        const m = line.trim().match(/^([^\s]+)\s+v[^\s]+/);
+        if (m && !m[1].startsWith('//') && !detectedDependencies.includes(m[1])) {
+          detectedDependencies.push(m[1]);
+        }
+      }
+    }
+
     if (detectedFramework === 'Generic') {
-      if (foundManifests.some((p) => p.includes('requirements') || p.includes('pyproject'))) {
+      if (detectedDependencies.some((d) => /^django$/i.test(d))) detectedFramework = 'Django';
+      else if (detectedDependencies.some((d) => /^fastapi$/i.test(d))) detectedFramework = 'FastAPI';
+      else if (detectedDependencies.some((d) => /^flask$/i.test(d))) detectedFramework = 'Flask';
+      else if (foundManifests.some((p) => p.includes('requirements') || p.includes('pyproject'))) {
         detectedFramework = 'Python Application';
       } else if (foundManifests.some((p) => p.includes('go.mod'))) {
         detectedFramework = 'Go Service';
       } else if (foundManifests.some((p) => p.includes('Cargo.toml'))) {
         detectedFramework = 'Rust Project';
       }
+    }
+
+    // Strict evidence-backed Database detection (never invent DB if absent)
+    if (prismaSchemaRaw) {
+      const providerMatch = prismaSchemaRaw.match(/provider\s*=\s*"([^"]+)"/i);
+      const prov = providerMatch?.[1]?.toLowerCase() || '';
+      if (prov.includes('postgres')) detectedDatabase = 'PostgreSQL (Prisma)';
+      else if (prov.includes('mysql')) detectedDatabase = 'MySQL (Prisma)';
+      else if (prov.includes('sqlite')) detectedDatabase = 'SQLite (Prisma)';
+      else if (prov.includes('mongodb')) detectedDatabase = 'MongoDB (Prisma)';
+      else detectedDatabase = 'Prisma ORM';
+    } else if (detectedDependencies.some((d) => /mongoose|mongodb/i.test(d))) {
+      detectedDatabase = 'MongoDB';
+    } else if (detectedDependencies.some((d) => /^pg$|^postgres|@neondatabase|psycopg|sqlalchemy/i.test(d))) {
+      detectedDatabase = 'PostgreSQL';
+    } else if (detectedDependencies.some((d) => /^mysql|mysql2/i.test(d))) {
+      detectedDatabase = 'MySQL';
+    } else if (detectedDependencies.some((d) => /sqlite|better-sqlite3/i.test(d))) {
+      detectedDatabase = 'SQLite';
     }
 
     // 6. Documentation (README) Status
@@ -340,11 +399,11 @@ export async function executeDeterministicAnalysis(params: {
     // 7. Load Compiler Options for Alias Resolution
     const tsconfigOptions = parseTsConfig(tsconfigRaw);
 
-    // 8. Select Source Files for Real AST Parsing (processing available source files up to safe execution budget)
+    // 8. Select Source Files for Real AST Parsing (up to 250 files within serverless execution bounds)
     const sourceCandidates = treeFiles
       .filter((f) => f.classification === 'SOURCE' && !f.path.endsWith('.d.ts'))
       .sort((a, b) => {
-        // Priority scoring: Entrypoints > Configs > Routes > Services > Components > Others
+        // Priority scoring: Entrypoints > Schema/DB > Auth > API Routes > Services > Components > Others
         const score = (p: string) => {
           const lower = p.toLowerCase();
           if (lower === 'index.ts' || lower === 'index.js' || lower === 'src/index.ts') return 100;
@@ -358,7 +417,7 @@ export async function executeDeterministicAnalysis(params: {
         };
         return score(b.path) - score(a.path);
       })
-      .slice(0, 120);
+      .slice(0, 250);
 
     // Parallel batch fetch and AST parsing
     const parsedFiles: ParsedSourceFile[] = [];
@@ -370,7 +429,7 @@ export async function executeDeterministicAnalysis(params: {
     let unresolvedImportsCount = 0;
     const importedExternalPackages = new Set<string>();
     const externalPackageUsage = new Map<string, Set<string>>();
-    const batchSize = 12;
+    const batchSize = 15;
 
     await telemetry.measure(
       'analysis.ast_batch_parse',
@@ -438,6 +497,44 @@ export async function executeDeterministicAnalysis(params: {
                     unresolvedImportsCount++;
                   }
                 }
+
+                // Also resolve explicit re-exports (export { X } from './Y', export * from './Z')
+                for (const exp of parsed.exports) {
+                  if (!exp.reExportFrom) continue;
+                  totalImportsCount++;
+                  const resolvedReExp = resolveImportSpecifier({
+                    specifier: exp.reExportFrom,
+                    importingFilePath: file.path,
+                    allRepoFiles: allRepoFilePaths,
+                    tsconfig: tsconfigOptions,
+                  });
+                  if (!resolvedReExp.isExternal && resolvedReExp.resolvedPath && allRepoFilePaths.has(resolvedReExp.resolvedPath)) {
+                    resolvedImportsCount++;
+                    const edgeId = `reexp-${file.path.replace(/\//g, '_')}-${resolvedReExp.resolvedPath.replace(/\//g, '_')}-${exp.line}`;
+                    dependencyEdges.push({
+                      id: edgeId,
+                      source: file.path,
+                      target: resolvedReExp.resolvedPath,
+                      line: exp.line,
+                      symbols: [exp.name],
+                      relationship: 're-exports',
+                      confidence: 1.0,
+                      provenance: createGraphProvenance({
+                        repository: `${owner}/${repo}`,
+                        source: file.path,
+                        target: resolvedReExp.resolvedPath,
+                        line: exp.line,
+                        commitSha: latestCommitSha || undefined,
+                        analysisId,
+                      }) as any,
+                    });
+                  } else if (resolvedReExp.isExternal && resolvedReExp.externalPackage) {
+                    externalImportsCount++;
+                    importedExternalPackages.add(resolvedReExp.externalPackage);
+                  } else {
+                    unresolvedImportsCount++;
+                  }
+                }
               } catch (_) {
                 failedFilesCount++;
               }
@@ -454,9 +551,6 @@ export async function executeDeterministicAnalysis(params: {
 
     // 10. Generate Evidence-Grounded Architecture Nodes & Inter-Module Edges
     const topologyModules = Array.from(topLevelDirs);
-    if (topologyModules.length === 0 && topLanguage !== 'Unknown') {
-      topologyModules.push('src');
-    }
 
     // Compute actual module metrics from parsed files
     const moduleFileCountMap = new Map<string, number>();
@@ -556,24 +650,16 @@ export async function executeDeterministicAnalysis(params: {
         dependencies: [],
         dependents: ['node-app'],
         recentChanges: [],
-        metrics: { loc, fanIn: Math.max(1, fanIn), fanOut },
+        metrics: { loc, fanIn, fanOut },
         position: { x: 100 + (idx % 3) * 170, y: 160 + Math.floor(idx / 3) * 110 },
-      });
-
-      topoEdges.push({
-        id: `edge-app-${mod}`,
-        source: 'node-app',
-        target: `node-${mod}`,
-        relationship: 'imports',
-        confidence: 1.0,
       });
     });
 
-    // Add inter-module import edges backed by real AST imports
+    // Add inter-module import edges backed strictly by verified AST imports or re-exports
     const addedModuleEdgeKeys = new Set<string>();
     for (const edge of dependencyEdges) {
-      const srcMod = edge.source.split('/')[0];
-      const tgtMod = edge.target.split('/')[0];
+      const srcMod = edge.source.includes('/') ? edge.source.split('/')[0] : 'root';
+      const tgtMod = edge.target.includes('/') ? edge.target.split('/')[0] : 'root';
 
       if (srcMod !== tgtMod) {
         const sourceNodeId = srcMod === 'root' ? 'node-app' : `node-${srcMod}`;
@@ -599,18 +685,20 @@ export async function executeDeterministicAnalysis(params: {
       }
     }
 
-    // 11. Store Structured Evidences in Neon PostgreSQL with Provenance
+    // 11. Atomically Replace Structured Evidences in Neon PostgreSQL inside a transaction
     let evidenceCreatedCount = 0;
 
     await telemetry.measure(
       'database.write_evidences',
       async () => {
-        // Clean previous evidences to keep context pristine
-        await prisma.evidence.deleteMany({ where: { projectId } }).catch(() => {});
-
-        // Evidence 1: File Structure & Volume (with classifications)
-        await prisma.evidence.create({
-          data: {
+        const evidenceRecords: Array<{
+          projectId: string;
+          type: string;
+          title: string;
+          path?: string;
+          metadata: any;
+        }> = [
+          {
             projectId,
             type: 'files',
             title: 'Repository Structure & Codebase Volume',
@@ -630,26 +718,22 @@ export async function executeDeterministicAnalysis(params: {
                 commitSha: latestCommitSha || undefined,
                 analysisId,
               }),
-            } as any,
+            },
           },
-        });
-        evidenceCreatedCount++;
-
-        // Evidence 2: Architecture & Topology (with file-level dependency edges & AST symbols)
-        await prisma.evidence.create({
-          data: {
+          {
             projectId,
             type: 'architecture',
             title: 'Architectural Framework & Dependency Topology',
             metadata: {
               primaryLanguage: topLanguage,
               framework: detectedFramework,
+              database: detectedDatabase,
               languageDistribution: languages,
               modulesCount: topLevelDirs.size,
               modules: topologyModules,
               nodes: topoNodes,
               edges: topoEdges,
-              dependencyEdges: dependencyEdges.slice(0, 200) as any,
+              dependencyEdges: dependencyEdges as any,
               cycles: detectedCycles,
               parsedFilesCount: parsedFiles.length,
               provenance: {
@@ -661,44 +745,39 @@ export async function executeDeterministicAnalysis(params: {
                 confidence: 'Deterministic',
                 description: `Architecture dependency topology connecting ${topologyModules.length} modules and ${parsedFiles.length} parsed source files`,
               },
-            } as any,
+            },
           },
-        });
-        evidenceCreatedCount++;
+        ];
 
-        // Evidence 3: Dependencies & Ecosystem
         if (detectedDependencies.length > 0) {
-          await prisma.evidence.create({
-            data: {
-              projectId,
-              type: 'dependencies',
-              title: `Detected Dependencies (${detectedDependencies.length} libraries)`,
-              path: packageJsonPath || 'manifest',
-              metadata: {
-                framework: detectedFramework,
-                manifests: foundManifests,
-                sampleDependencies: detectedDependencies.slice(0, 30),
-                allDependencies: detectedDependencies.slice(0, 200),
-                packageUsageMap: Object.fromEntries(
-                  Array.from(externalPackageUsage.entries()).map(([pkg, files]) => [pkg, Array.from(files)])
-                ),
-                totalCount: detectedDependencies.length,
-                provenance: createManifestProvenance({
-                  repository: `${owner}/${repo}`,
-                  manifestPath: packageJsonPath || 'manifest',
-                  commitSha: latestCommitSha || undefined,
-                  analysisId,
-                  dependenciesCount: detectedDependencies.length,
-                }),
-              } as any,
+          evidenceRecords.push({
+            projectId,
+            type: 'dependencies',
+            title: `Detected Dependencies (${detectedDependencies.length} libraries)`,
+            path: packageJsonPath || foundManifests[0] || 'manifest',
+            metadata: {
+              framework: detectedFramework,
+              database: detectedDatabase,
+              manifests: foundManifests,
+              sampleDependencies: detectedDependencies.slice(0, 30),
+              allDependencies: detectedDependencies.slice(0, 300),
+              packageUsageMap: Object.fromEntries(
+                Array.from(externalPackageUsage.entries()).map(([pkg, files]) => [pkg, Array.from(files)])
+              ),
+              totalCount: detectedDependencies.length,
+              provenance: createManifestProvenance({
+                repository: `${owner}/${repo}`,
+                manifestPath: packageJsonPath || foundManifests[0] || 'manifest',
+                commitSha: latestCommitSha || undefined,
+                analysisId,
+                dependenciesCount: detectedDependencies.length,
+              }),
             },
           });
-          evidenceCreatedCount++;
         }
 
-        // Evidence 4: Development Timeline (Recent Commits)
         if (commits.length > 0) {
-          const timelineEvents = commits.map((c, idx) => {
+          const timelineEvents = commits.map((c) => {
             const commitDate = c.commit.author?.date ? new Date(c.commit.author.date) : new Date();
             const shortSha = c.sha.substring(0, 7);
             const msgLines = c.commit.message.split('\n');
@@ -706,7 +785,6 @@ export async function executeDeterministicAnalysis(params: {
             const extendedBody = msgLines.slice(1).join('\n').trim();
             const authorName = c.commit.author?.name || 'Developer';
 
-            // Deterministic classification based on commit content & message keywords
             const lowerMsg = msg.toLowerCase();
             let eventType: 'milestone' | 'security' | 'database' | 'refactor' | 'feature' = 'feature';
             if (/\b(init|initial|release|v\d+\.\d+|breaking|major)\b/.test(lowerMsg)) {
@@ -738,54 +816,53 @@ export async function executeDeterministicAnalysis(params: {
             };
           });
 
-          await prisma.evidence.create({
-            data: {
-              projectId,
-              type: 'commits',
-              title: 'Recent Development Commits',
-              metadata: {
-                commitCount: commits.length,
-                events: timelineEvents,
-                recentCommits: commits.map((c) => ({
-                  sha: c.sha.substring(0, 7),
-                  message: c.commit.message.split('\n')[0],
-                  author: c.commit.author?.name || 'Developer',
-                  date: c.commit.author?.date || null,
-                })),
-                provenance: createCommitProvenance({
-                  repository: `${owner}/${repo}`,
-                  commitSha: latestCommitSha || 'HEAD',
-                  analysisId,
-                  author: commits[0]?.commit.author?.name || 'Developer',
-                }),
-              } as any,
+          evidenceRecords.push({
+            projectId,
+            type: 'commits',
+            title: 'Recent Development Commits',
+            metadata: {
+              commitCount: commits.length,
+              events: timelineEvents,
+              recentCommits: commits.map((c) => ({
+                sha: c.sha.substring(0, 7),
+                message: c.commit.message.split('\n')[0],
+                author: c.commit.author?.name || 'Developer',
+                date: c.commit.author?.date || null,
+              })),
+              provenance: createCommitProvenance({
+                repository: `${owner}/${repo}`,
+                commitSha: latestCommitSha || 'HEAD',
+                analysisId,
+                author: commits[0]?.commit.author?.name || 'Developer',
+              }),
             },
           });
-          evidenceCreatedCount++;
         }
 
-        // Evidence 5: Documentation Context (Only if real documentation exists in GitHub)
         if (hasReadme && readmeFile?.path) {
-          await prisma.evidence.create({
-            data: {
-              projectId,
-              type: 'documentation',
-              title: `Project Documentation (${readmeFile.path})`,
-              path: readmeFile.path,
-              metadata: {
-                preview: readmePreview,
-                hasReadme: true,
-                provenance: createFileProvenance({
-                  repository: `${owner}/${repo}`,
-                  path: readmeFile.path,
-                  commitSha: latestCommitSha || undefined,
-                  analysisId,
-                }),
-              } as any,
+          evidenceRecords.push({
+            projectId,
+            type: 'documentation',
+            title: `Project Documentation (${readmeFile.path})`,
+            path: readmeFile.path,
+            metadata: {
+              preview: readmePreview,
+              hasReadme: true,
+              provenance: createFileProvenance({
+                repository: `${owner}/${repo}`,
+                path: readmeFile.path,
+                commitSha: latestCommitSha || undefined,
+                analysisId,
+              }),
             },
           });
-          evidenceCreatedCount++;
         }
+
+        await prisma.$transaction([
+          prisma.evidence.deleteMany({ where: { projectId } }),
+          prisma.evidence.createMany({ data: evidenceRecords as any }),
+        ]);
+        evidenceCreatedCount = evidenceRecords.length;
       },
       { projectId, analysisId }
     );
@@ -922,13 +999,15 @@ export async function executeDeterministicAnalysis(params: {
     const summaryData = {
       coverage: canonicalCoverage,
       classificationCounts,
-      dependencyEdges: dependencyEdges.slice(0, 150),
+      dependencyEdges: dependencyEdges,
+      analyzerVersion: 'v2.0',
     };
 
     // 13. Update Project Status in Neon
     await updateProject(projectId, {
       primaryLanguage: topLanguage,
       framework: detectedFramework,
+      database: detectedDatabase || undefined,
       analysisStatus: 'COMPLETED',
       lastAnalyzedAt: new Date(),
     });
@@ -949,6 +1028,7 @@ export async function executeDeterministicAnalysis(params: {
     // 15. Update Analysis Record in Neon
     await updateAnalysisRun(projectId, analysisId, {
       status: 'COMPLETED',
+      analyzerVersion: 'v2.0',
       completedAt: new Date(),
       filesAnalyzed: totalDiscoveredFiles,
       commitsAnalyzed: commits.length,
@@ -961,8 +1041,9 @@ export async function executeDeterministicAnalysis(params: {
       summaryJson: summaryData as any,
     });
 
-    // 16. Invalidate in-memory caches so fresh context is loaded immediately
+    // 16. Invalidate in-memory caches so fresh context, onboarding & ask answers load immediately
     invalidateProjectContextCache(projectId);
+    invalidateOnboardingCache(projectId);
     githubCache.invalidateRepo(owner, repo);
 
     console.log(

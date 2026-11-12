@@ -23,7 +23,7 @@ export interface OnboardingSnapshotBanner {
   commitShort: string | null;
   branch: string;
   analyzedAt: string | null;
-  freshness: 'CURRENT' | 'STALE' | 'ANALYZING' | 'PARTIAL' | 'FAILED';
+  freshness: 'CURRENT' | 'STALE' | 'ANALYZING' | 'PARTIAL' | 'FAILED' | 'UNVERIFIED';
   overallCoveragePercent: number;
   sourceFilesTotal: number;
   sourceFilesParsed: number;
@@ -436,8 +436,12 @@ export function assembleDeveloperOnboardingReport(params: {
         noticeTitle = 'Latest Analysis Failed';
         noticeMessage =
           'The latest analysis run did not complete cleanly. Shown context may be incomplete until re-analysis succeeds.';
+      } else if (freshness === 'UNVERIFIED') {
+        noticeTitle = 'Repository freshness could not be verified.';
+        noticeMessage =
+          'Unable to compare the stored analysis snapshot against the latest GitHub commit right now. Shown data reflects the saved snapshot.';
       } else if (isStale) {
-        noticeTitle = 'Analysis Snapshot Outdated';
+        noticeTitle = 'Repository has changed since this analysis.';
         noticeMessage = `Newer commits exist on ${context.project.defaultBranch} since analyzed commit ${
           context.latestAnalysis.commitSha?.slice(0, 7) || 'HEAD'
         }. Sync & re-analyze for up-to-date onboarding intelligence.`;

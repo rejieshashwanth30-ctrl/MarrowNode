@@ -60,6 +60,13 @@ export function AskProjectInterface({
   const [loading, setLoading] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
 
+  // Reset conversation state cleanly when switching projects or logging out
+  React.useEffect(() => {
+    setMessages([]);
+    setQuery('');
+    setLoading(false);
+  }, [projectId]);
+
   const handleAsk = async (questionToAsk?: string) => {
     const q = (questionToAsk || query).trim();
     if (!q || !projectId || loading) return;

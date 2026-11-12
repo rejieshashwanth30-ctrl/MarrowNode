@@ -24,15 +24,18 @@ export interface BlastRadiusResult {
   directConsumersCount: number;
   transitiveConsumersCount: number;
   totalAffectedCount: number;
+  maxDepth: number;
   directConsumers: Array<{
     path: string;
     line: number;
     symbols?: string[];
     relationship: string;
+    edgeType: string;
   }>;
   transitiveConsumers: Array<{
     path: string;
     via: string;
+    depth: number;
   }>;
   isCoreSubsystem: boolean;
   cycles: string[][];
@@ -118,13 +121,14 @@ export class DependencyGraphEngine {
   }
 
   /**
-   * Resolves whether a given target matches a file or a module folder.
+   * Resolves whether a given path matches an exact file or folder target deterministically.
    */
   private matchesTarget(path: string, target: string): boolean {
-    if (path === target) return true;
+    const cleanPath = path.replace(/^\/+/, '');
     const cleanTarget = target.replace(/^\/+|\/+$/g, '');
-    if (path.startsWith(`${cleanTarget}/`)) return true;
-    if (path.startsWith(`src/${cleanTarget}/`)) return true;
+    if (!cleanTarget) return false;
+    if (cleanPath === cleanTarget) return true;
+    if (cleanPath.startsWith(`${cleanTarget}/`)) return true;
     return false;
   }
 
@@ -135,43 +139,46 @@ export class DependencyGraphEngine {
     target: string,
     changeType: 'interface' | 'refactor' | 'delete' = 'interface'
   ): BlastRadiusResult {
+    const cleanTarget = target.replace(/^\/+|\/+$/g, '');
     const isCoreSubsystem =
-      target.includes('prisma') ||
-      target.includes('db') ||
-      target.includes('auth') ||
-      target.includes('client') ||
-      target === 'app' ||
-      target === 'lib';
+      /(^|\/)(auth|session|middleware|prisma|db|database|security|oauth)(\/|\.|$)/i.test(cleanTarget) ||
+      ['app', 'lib', 'core', 'prisma', 'db', 'auth'].includes(cleanTarget.toLowerCase());
 
-    // 1. Identify Direct Consumers (incoming edges where target is imported)
+    // 1. Identify Direct Consumers (incoming verified edges where target is imported or re-exported)
     const directConsumersMap = new Map<
       string,
-      { path: string; line: number; symbols?: string[]; relationship: string }
+      { path: string; line: number; symbols?: string[]; relationship: string; edgeType: string }
     >();
 
     for (const edge of this.edges) {
       if (this.matchesTarget(edge.target, target) && !this.matchesTarget(edge.source, target)) {
         if (!directConsumersMap.has(edge.source)) {
           const symStr = edge.symbols?.length ? ` (${edge.symbols.join(', ')})` : '';
+          const relVerb = edge.relationship === 're-exports' ? 'Re-exports' : edge.relationship === 'type-imports' ? 'Type-imports' : 'Imports';
           directConsumersMap.set(edge.source, {
             path: edge.source,
             line: edge.line,
             symbols: edge.symbols,
-            relationship: `Imports ${edge.target}:${edge.line}${symStr}`,
+            edgeType: edge.relationship || 'imports',
+            relationship: `${relVerb} ${edge.target}:${edge.line}${symStr}`,
           });
         }
       }
     }
 
-    const directConsumers = Array.from(directConsumersMap.values());
+    const directConsumers = Array.from(directConsumersMap.values()).sort((a, b) =>
+      a.path.localeCompare(b.path)
+    );
 
-    // 2. Transitive Consumers via BFS
+    // 2. Complete Transitive Consumers via BFS with visited tracking (handles arbitrary graph size & cycles)
     const visited = new Set<string>(directConsumers.map((c) => c.path));
-    const transitiveConsumers: Array<{ path: string; via: string }> = [];
-    const queue: Array<{ path: string; via: string }> = directConsumers.map((c) => ({
+    const transitiveConsumers: Array<{ path: string; via: string; depth: number }> = [];
+    const queue: Array<{ path: string; via: string; depth: number }> = directConsumers.map((c) => ({
       path: c.path,
       via: c.path,
+      depth: 1,
     }));
+    let maxDepth = directConsumers.length > 0 ? 1 : 0;
 
     while (queue.length > 0) {
       const current = queue.shift()!;
@@ -180,13 +187,17 @@ export class DependencyGraphEngine {
       for (const callerEdge of callers) {
         if (!visited.has(callerEdge.source) && !this.matchesTarget(callerEdge.source, target)) {
           visited.add(callerEdge.source);
+          const nextDepth = current.depth + 1;
+          if (nextDepth > maxDepth) maxDepth = nextDepth;
           transitiveConsumers.push({
             path: callerEdge.source,
             via: current.path,
+            depth: nextDepth,
           });
           queue.push({
             path: callerEdge.source,
             via: current.path,
+            depth: nextDepth,
           });
         }
       }
@@ -198,7 +209,7 @@ export class DependencyGraphEngine {
       cycle.some((node) => this.matchesTarget(node, target))
     );
 
-    // 4. Mathematical Blast Rating Calculation
+    // 4. Evidence-Based Blast Rating Calculation
     const directCount = directConsumers.length;
     const transitiveCount = transitiveConsumers.length;
     const totalAffected = directCount + transitiveCount;
@@ -209,9 +220,9 @@ export class DependencyGraphEngine {
     if (totalAffected === 0) {
       blastRating = 'ISOLATED';
     } else if (changeType === 'delete') {
-      blastRating = totalAffected > BLAST_THRESHOLDS.moderateMax ? 'CRITICAL' : 'HIGH';
+      blastRating = totalAffected > BLAST_THRESHOLDS.moderateMax || isCoreSubsystem ? 'CRITICAL' : 'HIGH';
     } else if (changeType === 'interface') {
-      if (targetCycles.length > 0 || totalAffected > BLAST_THRESHOLDS.highMax) {
+      if (targetCycles.length > 0 || totalAffected > BLAST_THRESHOLDS.highMax || (isCoreSubsystem && totalAffected > BLAST_THRESHOLDS.moderateMax)) {
         blastRating = 'CRITICAL';
       } else if (
         totalAffected > BLAST_THRESHOLDS.moderateMax ||
@@ -238,10 +249,11 @@ export class DependencyGraphEngine {
       target,
       changeType,
       blastRating,
-      confidenceScore: 100, // 100% deterministic graph evaluation
+      confidenceScore: 100,
       directConsumersCount: directCount,
       transitiveConsumersCount: transitiveCount,
       totalAffectedCount: totalAffected,
+      maxDepth,
       directConsumers,
       transitiveConsumers,
       isCoreSubsystem,

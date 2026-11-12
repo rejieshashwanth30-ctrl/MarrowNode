@@ -158,7 +158,7 @@ export function DeveloperOnboarding({
   const bannerTone =
     snapshot.isStale || snapshot.freshness === 'FAILED'
       ? 'border-copper/40 bg-copper/5'
-      : snapshot.isPartial
+      : snapshot.isPartial || snapshot.freshness === 'UNVERIFIED'
       ? 'border-amber-500/40 bg-amber-500/5'
       : 'border-forest/30 bg-forest/5';
 

@@ -259,7 +259,8 @@ export async function fetchRepoCommits(
   token: string,
   owner: string,
   repo: string,
-  perPage = 10
+  perPage = 10,
+  options?: { branch?: string; bypassCache?: boolean; userScope?: string }
 ): Promise<
   Array<{
     sha: string;
@@ -274,17 +275,65 @@ export async function fetchRepoCommits(
     html_url: string;
   }>
 > {
-  const cacheKey = `${owner.toLowerCase()}/${repo.toLowerCase()}:commits:${perPage}`;
+  const branchParam = options?.branch ? `&sha=${encodeURIComponent(options.branch)}` : '';
+  const endpoint = `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/commits?per_page=${perPage}${branchParam}`;
+
+  if (options?.bypassCache) {
+    return githubRequest(endpoint, token);
+  }
+
+  const scope = options?.userScope || 'default';
+  const branchKey = options?.branch || 'default';
+  const cacheKey = `${owner.toLowerCase()}/${repo.toLowerCase()}:u:${scope}:commits:${branchKey}:${perPage}`;
   return githubCache.fetchWithCache(
     cacheKey,
     'repo_commits',
-    () =>
-      githubRequest(
-        `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/commits?per_page=${perPage}`,
-        token
-      ),
-    60 * 1000
+    () => githubRequest(endpoint, token),
+    30 * 1000
   );
+}
+
+/**
+ * Fast, timeout-bounded live GitHub HEAD verification for stale-analysis detection.
+ * Caches briefly (30s) per user/repo/branch so navigation stays immediate while detecting upstream pushes.
+ */
+export async function verifyRepositoryHeadSha(params: {
+  token: string | null;
+  owner: string;
+  repo: string;
+  branch: string;
+  userScope: string;
+}): Promise<{ headSha: string | null; verified: boolean }> {
+  const { token, owner, repo, branch, userScope } = params;
+  if (!token) {
+    return { headSha: null, verified: false };
+  }
+
+  const cacheKey = `${owner.toLowerCase()}/${repo.toLowerCase()}:u:${userScope}:head:${branch}`;
+  const cached = githubCache.get<{ headSha: string | null; verified: boolean }>(cacheKey);
+  if (cached) {
+    return cached.data;
+  }
+
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 2200);
+    try {
+      const commits = await githubRequest<Array<{ sha: string }>>(
+        `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/commits?sha=${encodeURIComponent(branch)}&per_page=1`,
+        token,
+        { signal: controller.signal }
+      );
+      const headSha = commits[0]?.sha || null;
+      const res = { headSha, verified: Boolean(headSha) };
+      githubCache.set(cacheKey, res, 30 * 1000);
+      return res;
+    } finally {
+      clearTimeout(timer);
+    }
+  } catch {
+    return { headSha: null, verified: false };
+  }
 }
 
 /**

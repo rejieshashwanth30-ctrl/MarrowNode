@@ -38,6 +38,7 @@ interface BlastRadiusData {
   directConsumersCount: number;
   transitiveConsumersCount: number;
   totalAffectedCount: number;
+  maxDepth?: number;
   directConsumers: Array<{
     path: string;
     line: number;
@@ -47,9 +48,42 @@ interface BlastRadiusData {
   transitiveConsumers: Array<{
     path: string;
     via: string;
+    depth?: number;
   }>;
   isCoreSubsystem: boolean;
   cycles: string[][];
+  explanation?: {
+    whatChanged: string;
+    reason: string;
+    whatIsUnknown: string[];
+  };
+  analysisSnapshot?: {
+    analysisId: string | null;
+    commitSha: string | null;
+    branch: string;
+    sourceFilesTotal: number;
+    sourceFilesParsed: number;
+    sourceCoveragePercent: number;
+    unresolvedImportsCount: number;
+    isPartial: boolean;
+  };
+}
+
+function flattenSourceFilesFromTree(nodes: FileTreeNode[]): string[] {
+  const result: string[] = [];
+  const walk = (items: FileTreeNode[]) => {
+    for (const n of items) {
+      if (n.type === 'file') {
+        if (/\.(ts|tsx|js|jsx|mjs|cjs|py|go|rs)$/i.test(n.path)) {
+          result.push(n.path);
+        }
+      } else if (n.children) {
+        walk(n.children);
+      }
+    }
+  };
+  walk(nodes);
+  return result.sort();
 }
 
 export function ChangeImpactAnalysis({
@@ -63,22 +97,35 @@ export function ChangeImpactAnalysis({
   fileTree = [],
   onConnectRepo,
 }: ChangeImpactAnalysisProps) {
+  const availableSourceFiles = React.useMemo(() => flattenSourceFilesFromTree(fileTree), [fileTree]);
   const [selectedTarget, setSelectedTarget] = useState<string>(
-    initialFile || modules[0] || 'app'
+    initialFile || modules[0] || availableSourceFiles[0] || 'app'
   );
   const [changeType, setChangeType] = useState<'interface' | 'refactor' | 'delete'>('interface');
   const [impactData, setImpactData] = useState<BlastRadiusData | null>(null);
   const [isLoadingImpact, setIsLoadingImpact] = useState<boolean>(false);
   const [impactError, setImpactError] = useState<string | null>(null);
+  const [showAllTransitive, setShowAllTransitive] = useState<boolean>(false);
+
+  // Immediately clear stale project results when switching project
+  useEffect(() => {
+    setImpactData(null);
+    setImpactError(null);
+    setShowAllTransitive(false);
+  }, [projectId]);
 
   // Sync selected target when modules or initialFile change
   useEffect(() => {
     if (initialFile) {
       setSelectedTarget(initialFile);
-    } else if (modules.length > 0 && !modules.includes(selectedTarget)) {
+    } else if (
+      modules.length > 0 &&
+      !modules.includes(selectedTarget) &&
+      !availableSourceFiles.includes(selectedTarget)
+    ) {
       setSelectedTarget(modules[0]);
     }
-  }, [initialFile, modules]);
+  }, [initialFile, modules, availableSourceFiles, selectedTarget]);
 
   // Query server-side deterministic impact analysis
   useEffect(() => {
@@ -256,21 +303,32 @@ export function ChangeImpactAnalysis({
             </label>
             <select
               value={selectedTarget}
-              onChange={(e) => setSelectedTarget(e.target.value)}
+              onChange={(e) => {
+                setSelectedTarget(e.target.value);
+                setShowAllTransitive(false);
+              }}
               className="w-full h-9 px-3 bg-surface border border-border rounded text-xs font-sans text-text-primary focus:outline-none focus:ring-1 focus:ring-forest dark:bg-[#151C17] dark:border-border-dark dark:text-white"
             >
-              {modules.length > 0 ? (
-                modules.map((m) => (
-                  <option key={m} value={m}>
-                    Project area: /{m}
-                  </option>
-                ))
-              ) : (
-                <>
-                  <option value="app">Project area: /app</option>
-                  <option value="lib">Project area: /lib</option>
-                  <option value="components">Project area: /components</option>
-                </>
+              {modules.length > 0 && (
+                <optgroup label="Project Areas">
+                  {modules.map((m) => (
+                    <option key={`mod-${m}`} value={m}>
+                      Project area: /{m}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+              {availableSourceFiles.length > 0 && (
+                <optgroup label="Analyzed Source Files">
+                  {availableSourceFiles.slice(0, 150).map((fp) => (
+                    <option key={`file-${fp}`} value={fp}>
+                      File: {fp}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+              {modules.length === 0 && availableSourceFiles.length === 0 && (
+                <option value={selectedTarget}>{selectedTarget}</option>
               )}
             </select>
           </div>
@@ -317,6 +375,25 @@ export function ChangeImpactAnalysis({
           </div>
         </div>
 
+        {/* Incomplete Coverage Limitation Warning */}
+        {impactData?.analysisSnapshot?.isPartial && (
+          <div className="p-3.5 rounded bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-300 text-xs font-sans space-y-1">
+            <div className="font-semibold flex items-center gap-1.5">
+              <AlertTriangle className="w-4 h-4 shrink-0" />
+              <span>Impact analysis is limited because some source files or relationships could not be analyzed.</span>
+            </div>
+            <p className="pl-5 text-[11px]">
+              Analysis coverage: {impactData.analysisSnapshot.sourceCoveragePercent}% ({impactData.analysisSnapshot.sourceFilesParsed}/{impactData.analysisSnapshot.sourceFilesTotal} source files) · Unresolved relationships: {impactData.analysisSnapshot.unresolvedImportsCount}. Results are based only on analyzed project relationships.
+            </p>
+          </div>
+        )}
+
+        {impactError && (
+          <div className="p-3.5 rounded bg-copper/10 border border-copper/30 text-copper text-xs">
+            {impactError}
+          </div>
+        )}
+
         {/* Telemetry Results */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="p-4 rounded bg-surface-subtle dark:bg-[#1A221D] border border-border dark:border-border-dark">
@@ -325,19 +402,21 @@ export function ChangeImpactAnalysis({
             </span>
             <div className={`text-lg font-bold font-sans ${blastColor}`}>{friendlyRatingLabel}</div>
             <span className="text-[11px] text-text-muted mt-1 block">
-              Based on connections in your project
+              Based on analyzed repository evidence
             </span>
           </div>
 
           <div className="p-4 rounded bg-surface-subtle dark:bg-[#1A221D] border border-border dark:border-border-dark">
             <span className="text-[10px] uppercase font-semibold text-text-muted block mb-1">
-              Other parts that may be affected
+              Connected &amp; potentially affected
             </span>
             <div className="text-lg font-bold font-sans text-text-primary dark:text-white">
               {impactData ? `${impactData.directConsumersCount} direct, ${impactData.transitiveConsumersCount} indirect` : 'Checking…'}
             </div>
             <span className="text-[11px] text-text-muted mt-1 block">
-              {impactData ? `${impactData.totalAffectedCount} total affected files` : 'Scanning connections'}
+              {impactData
+                ? `${impactData.totalAffectedCount} total downstream file(s)${impactData.maxDepth ? ` (depth ${impactData.maxDepth})` : ''}`
+                : 'Scanning connections'}
             </span>
           </div>
 
@@ -382,7 +461,7 @@ export function ChangeImpactAnalysis({
         {/* Direct Consumers Impact List */}
         <div className="space-y-2">
           <h4 className="text-xs font-semibold uppercase text-text-muted">
-            Files that directly depend on this part ({directConsumers.length})
+            Directly affected — Verified relationships ({directConsumers.length})
           </h4>
           {directConsumers.length > 0 ? (
             <div className="border border-border dark:border-border-dark rounded divide-y divide-border dark:divide-border-dark text-xs max-h-60 overflow-y-auto">
@@ -412,11 +491,22 @@ export function ChangeImpactAnalysis({
         {/* Transitive Consumers Impact List */}
         {transitiveConsumers.length > 0 && (
           <div className="space-y-2">
-            <h4 className="text-xs font-semibold uppercase text-text-muted">
-              Indirectly affected parts ({transitiveConsumers.length})
-            </h4>
-            <div className="border border-border dark:border-border-dark rounded divide-y divide-border dark:divide-border-dark text-xs max-h-48 overflow-y-auto">
-              {transitiveConsumers.slice(0, 10).map((tc, idx) => (
+            <div className="flex items-center justify-between gap-2">
+              <h4 className="text-xs font-semibold uppercase text-text-muted">
+                Potentially affected — Indirect / transitive ({transitiveConsumers.length})
+              </h4>
+              {transitiveConsumers.length > 15 && (
+                <button
+                  type="button"
+                  onClick={() => setShowAllTransitive((p) => !p)}
+                  className="text-xs font-medium text-forest hover:underline"
+                >
+                  {showAllTransitive ? 'Show fewer' : `Show all (${transitiveConsumers.length})`}
+                </button>
+              )}
+            </div>
+            <div className="border border-border dark:border-border-dark rounded divide-y divide-border dark:divide-border-dark text-xs max-h-64 overflow-y-auto">
+              {(showAllTransitive ? transitiveConsumers : transitiveConsumers.slice(0, 15)).map((tc, idx) => (
                 <div key={idx} className="p-2.5 flex flex-wrap items-center justify-between gap-2 min-w-0">
                   <div className="flex items-center gap-2 min-w-0 flex-1">
                     <Layers className="w-3.5 h-3.5 text-copper shrink-0" />
@@ -425,11 +515,24 @@ export function ChangeImpactAnalysis({
                     </span>
                   </div>
                   <span className="text-[10px] text-text-muted font-mono shrink-0 break-all">
-                    through {tc.via}
+                    through {tc.via}{tc.depth ? ` (hop ${tc.depth})` : ''}
                   </span>
                 </div>
               ))}
             </div>
+          </div>
+        )}
+
+        {impactData?.explanation && (
+          <div className="p-3.5 rounded bg-surface-subtle dark:bg-[#1A221D] border border-border dark:border-border-dark text-xs space-y-1.5">
+            <div className="font-medium text-text-primary dark:text-white">
+              {impactData.explanation.reason}
+            </div>
+            {impactData.explanation.whatIsUnknown.map((u, idx) => (
+              <div key={idx} className="text-[11px] text-text-muted">
+                • Unknown / outside static proof: {u}
+              </div>
+            ))}
           </div>
         )}
 

@@ -1,15 +1,13 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { askProjectQuestion } from '@/lib/services/ai-query';
+import { getSafeErrorResponse } from '@/lib/errors';
 
 export const dynamic = 'force-dynamic';
 
 /**
  * POST /api/projects/[id]/ask
- *
- * Evidence-grounded question answering for the active project codebase.
- * Strictly verifies ownership against authenticated user.
- * Body: { query: string }
+ * Evidence-grounded question answering strictly scoped to the owned active project snapshot.
  */
 export async function POST(
   request: NextRequest,
@@ -18,7 +16,7 @@ export async function POST(
   try {
     await requireAuth();
     const projectId = params.id;
-    const body = await request.json();
+    const body = await request.json().catch(() => ({}));
     const query = body.query;
 
     if (!query || typeof query !== 'string' || !query.trim()) {
@@ -38,11 +36,11 @@ export async function POST(
       result,
     });
   } catch (error: any) {
-    console.error('[MarrowNode Ask Project Error]:', error);
-    return NextResponse.json(
-      { error: error?.message || 'Failed to answer project question' },
-      { status: error?.statusCode || 500 }
+    const safe = getSafeErrorResponse(
+      error,
+      'Unable to answer project question right now.',
+      `ask.POST projectId=${params.id}`
     );
+    return NextResponse.json({ error: safe.message }, { status: safe.statusCode });
   }
 }
-
