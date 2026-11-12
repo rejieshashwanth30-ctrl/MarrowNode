@@ -19,14 +19,18 @@ export async function ensureMarrowNodeSchema(): Promise<boolean> {
 
   initPromise = (async () => {
     try {
-      // 1. Fast check: verify marrownode schema, modernized columns, and PR check table exist
+      // 1. Fast check: verify marrownode schema, modernized columns, and scalable batch/commit tables exist
       const schemaCheck: any[] = await prisma.$queryRawUnsafe(`
         SELECT c.column_name FROM information_schema.columns c
-        INNER JOIN information_schema.tables t
-          ON t.table_schema = c.table_schema AND t.table_name = 'pull_request_checks'
+        INNER JOIN information_schema.tables t1
+          ON t1.table_schema = c.table_schema AND t1.table_name = 'pull_request_checks'
+        INNER JOIN information_schema.tables t2
+          ON t2.table_schema = c.table_schema AND t2.table_name = 'analysis_batches'
+        INNER JOIN information_schema.tables t3
+          ON t3.table_schema = c.table_schema AND t3.table_name = 'project_commits'
         WHERE c.table_schema = 'marrownode' 
-          AND c.table_name = 'projects' 
-          AND c.column_name = 'prChecksEnabled'
+          AND c.table_name = 'analyses' 
+          AND c.column_name = 'totalBatches'
         LIMIT 1;
       `);
 
@@ -241,6 +245,8 @@ export async function ensureMarrowNodeSchema(): Promise<boolean> {
               ADD CONSTRAINT "pull_request_checks_repositoryId_fkey"
               FOREIGN KEY ("repositoryId") REFERENCES "marrownode"."repositories"("id") ON DELETE CASCADE ON UPDATE CASCADE;
           END IF;
+        DO $$
+        BEGIN
           IF NOT EXISTS (
             SELECT 1 FROM pg_constraint WHERE conname = 'pull_request_checks_analysisId_fkey'
           ) THEN
@@ -250,6 +256,95 @@ export async function ensureMarrowNodeSchema(): Promise<boolean> {
           END IF;
         END
         $$;
+
+        -- Scalable Batch Analysis & Paginated Git History Provisioning
+        ALTER TYPE "marrownode"."AnalysisStatus" ADD VALUE IF NOT EXISTS 'QUEUED';
+        ALTER TYPE "marrownode"."AnalysisStatus" ADD VALUE IF NOT EXISTS 'PARTIALLY_COMPLETED';
+        ALTER TYPE "marrownode"."AnalysisStatus" ADD VALUE IF NOT EXISTS 'CANCELLED';
+
+        ALTER TABLE "marrownode"."analyses" ADD COLUMN IF NOT EXISTS "repositoryId" TEXT;
+        ALTER TABLE "marrownode"."analyses" ADD COLUMN IF NOT EXISTS "totalFiles" INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE "marrownode"."analyses" ADD COLUMN IF NOT EXISTS "processedFiles" INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE "marrownode"."analyses" ADD COLUMN IF NOT EXISTS "failedFiles" INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE "marrownode"."analyses" ADD COLUMN IF NOT EXISTS "ignoredFiles" INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE "marrownode"."analyses" ADD COLUMN IF NOT EXISTS "totalSourceFiles" INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE "marrownode"."analyses" ADD COLUMN IF NOT EXISTS "processedSourceFiles" INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE "marrownode"."analyses" ADD COLUMN IF NOT EXISTS "totalBatches" INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE "marrownode"."analyses" ADD COLUMN IF NOT EXISTS "completedBatches" INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE "marrownode"."analyses" ADD COLUMN IF NOT EXISTS "currentBatch" INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE "marrownode"."analyses" ADD COLUMN IF NOT EXISTS "historyStatus" TEXT NOT NULL DEFAULT 'PENDING';
+        ALTER TABLE "marrownode"."analyses" ADD COLUMN IF NOT EXISTS "totalCommitsIngested" INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE "marrownode"."analyses" ADD COLUMN IF NOT EXISTS "historyNextPage" INTEGER NOT NULL DEFAULT 1;
+        ALTER TABLE "marrownode"."analyses" ADD COLUMN IF NOT EXISTS "failedFilesJson" JSONB;
+
+        CREATE TABLE IF NOT EXISTS "marrownode"."analysis_batches" (
+          "id" TEXT NOT NULL,
+          "analysisId" TEXT NOT NULL,
+          "projectId" TEXT NOT NULL,
+          "batchNumber" INTEGER NOT NULL,
+          "status" TEXT NOT NULL DEFAULT 'PENDING',
+          "fileCount" INTEGER NOT NULL DEFAULT 0,
+          "processedCount" INTEGER NOT NULL DEFAULT 0,
+          "failedCount" INTEGER NOT NULL DEFAULT 0,
+          "locTotal" INTEGER NOT NULL DEFAULT 0,
+          "fileManifestJson" JSONB,
+          "parsedFilesJson" JSONB,
+          "failedFilesJson" JSONB,
+          "startedAt" TIMESTAMP(3),
+          "completedAt" TIMESTAMP(3),
+          "error" TEXT,
+          "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          CONSTRAINT "analysis_batches_pkey" PRIMARY KEY ("id")
+        );
+
+        CREATE UNIQUE INDEX IF NOT EXISTS "analysis_batches_analysisId_batchNumber_key"
+          ON "marrownode"."analysis_batches"("analysisId", "batchNumber");
+        CREATE INDEX IF NOT EXISTS "analysis_batches_analysisId_status_idx"
+          ON "marrownode"."analysis_batches"("analysisId", "status");
+        CREATE INDEX IF NOT EXISTS "analysis_batches_projectId_idx"
+          ON "marrownode"."analysis_batches"("projectId");
+
+        CREATE TABLE IF NOT EXISTS "marrownode"."ast_file_cache" (
+          "id" TEXT NOT NULL,
+          "repositoryId" TEXT NOT NULL,
+          "filePath" TEXT NOT NULL,
+          "blobSha" TEXT NOT NULL,
+          "analyzerVersion" TEXT NOT NULL DEFAULT 'v3.0',
+          "loc" INTEGER NOT NULL DEFAULT 0,
+          "parsedAstJson" JSONB NOT NULL,
+          "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          CONSTRAINT "ast_file_cache_pkey" PRIMARY KEY ("id")
+        );
+
+        CREATE UNIQUE INDEX IF NOT EXISTS "ast_file_cache_repositoryId_filePath_blobSha_analyzerVersion_key"
+          ON "marrownode"."ast_file_cache"("repositoryId", "filePath", "blobSha", "analyzerVersion");
+        CREATE INDEX IF NOT EXISTS "ast_file_cache_repositoryId_analyzerVersion_idx"
+          ON "marrownode"."ast_file_cache"("repositoryId", "analyzerVersion");
+
+        CREATE TABLE IF NOT EXISTS "marrownode"."project_commits" (
+          "id" TEXT NOT NULL,
+          "projectId" TEXT NOT NULL,
+          "repositoryId" TEXT NOT NULL,
+          "commitSha" TEXT NOT NULL,
+          "shortSha" TEXT NOT NULL,
+          "branch" TEXT NOT NULL DEFAULT 'main',
+          "message" TEXT NOT NULL,
+          "body" TEXT,
+          "eventType" TEXT NOT NULL DEFAULT 'feature',
+          "authorName" TEXT NOT NULL DEFAULT 'Developer',
+          "authorEmail" TEXT,
+          "committedAt" TIMESTAMP(3) NOT NULL,
+          "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          CONSTRAINT "project_commits_pkey" PRIMARY KEY ("id")
+        );
+
+        CREATE UNIQUE INDEX IF NOT EXISTS "project_commits_repositoryId_commitSha_key"
+          ON "marrownode"."project_commits"("repositoryId", "commitSha");
+        CREATE INDEX IF NOT EXISTS "project_commits_projectId_committedAt_idx"
+          ON "marrownode"."project_commits"("projectId", "committedAt");
+        CREATE INDEX IF NOT EXISTS "project_commits_projectId_branch_committedAt_idx"
+          ON "marrownode"."project_commits"("projectId", "branch", "committedAt");
       `);
 
       console.log('[MarrowNode DB Init] marrownode schema and tables successfully provisioned.');

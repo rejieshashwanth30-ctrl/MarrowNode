@@ -98,18 +98,20 @@ export function ProjectHeader({
     ? 'Analyzing...'
     : project.analysisStatus === 'COMPLETED'
     ? 'Analysis complete'
+    : project.analysisStatus === 'PARTIALLY_COMPLETED'
+    ? 'Partially analyzed'
     : project.analysisStatus === 'FAILED'
     ? 'Analysis failed'
-    : project.analysisStatus === 'RUNNING'
+    : project.analysisStatus === 'RUNNING' || project.analysisStatus === 'QUEUED'
     ? 'Analyzing...'
     : 'Waiting to analyze';
 
   const statusVariant =
     project.analysisStatus === 'COMPLETED'
       ? 'success'
-      : project.analysisStatus === 'FAILED'
+      : project.analysisStatus === 'PARTIALLY_COMPLETED' || project.analysisStatus === 'FAILED'
       ? 'copper'
-      : project.analysisStatus === 'RUNNING'
+      : project.analysisStatus === 'RUNNING' || project.analysisStatus === 'QUEUED'
       ? 'forest'
       : 'neutral';
 
@@ -131,11 +133,11 @@ export function ProjectHeader({
 
             <div className="flex flex-wrap items-center gap-1.5 min-w-0">
               <Badge variant={statusVariant} size="sm" className="gap-1 font-sans font-medium">
-                {isAnalyzing || project.analysisStatus === 'RUNNING' ? (
+                {isAnalyzing || project.analysisStatus === 'RUNNING' || project.analysisStatus === 'QUEUED' ? (
                   <Loader2 className="w-3 h-3 animate-spin text-forest dark:text-[#9AC6A7]" />
                 ) : project.analysisStatus === 'COMPLETED' ? (
                   <CheckCircle2 className="w-3 h-3" />
-                ) : project.analysisStatus === 'FAILED' ? (
+                ) : project.analysisStatus === 'PARTIALLY_COMPLETED' || project.analysisStatus === 'FAILED' ? (
                   <AlertCircle className="w-3 h-3 text-copper" />
                 ) : (
                   <Clock className="w-3 h-3 text-text-muted" />
@@ -253,7 +255,7 @@ export function ProjectHeader({
                   <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
                   Analyzing...
                 </>
-              ) : project.analysisStatus === 'COMPLETED' ? (
+              ) : project.analysisStatus === 'COMPLETED' || project.analysisStatus === 'PARTIALLY_COMPLETED' ? (
                 <>
                   <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
                   Analyze again

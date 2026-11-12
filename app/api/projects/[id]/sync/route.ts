@@ -3,7 +3,13 @@ import { requireAuth, getOrCreateCurrentProfile } from '@/lib/auth';
 import { getUserProject } from '@/lib/services/projects';
 import { createAnalysisRun } from '@/lib/services/analysis';
 import { getGitHubTokenForCurrentUser, fetchRepoCommits, githubCache } from '@/lib/github/client';
-import { executeDeterministicAnalysis } from '@/lib/github/analysis';
+import {
+  ANALYZER_VERSION,
+  formatAnalysisProgress,
+  initializeResumableAnalysis,
+  processAnalysisStep,
+  STEP_TIME_BUDGET_MS,
+} from '@/lib/github/analysis';
 import { invalidateProjectContextCache } from '@/lib/services/project-context';
 import { invalidateOnboardingCache } from '@/lib/services/onboarding';
 import { prisma } from '@/lib/prisma';
@@ -13,10 +19,8 @@ export const dynamic = 'force-dynamic';
 
 /**
  * POST /api/projects/[id]/sync
- *
- * Checks live GitHub HEAD (bypassing commit cache) on the default branch.
- * If unchanged & already completed cleanly: returns upToDate: true.
- * If changed (or force=true): triggers idempotent deterministic re-analysis.
+ * Checks live GitHub HEAD cleanly. If unchanged and completed cleanly under v3.0: upToDate: true.
+ * Otherwise starts resumable batch analysis + paginated history ingestion.
  */
 export async function POST(
   request: NextRequest,
@@ -26,11 +30,9 @@ export async function POST(
     await requireAuth();
     const profile = await getOrCreateCurrentProfile();
     const projectId = params.id;
-
-    // Validate project ownership strictly
     const project = await getUserProject(projectId);
 
-    if (!project.githubOwner || !project.githubRepositoryName) {
+    if (!project.repository || !project.githubOwner || !project.githubRepositoryName) {
       return NextResponse.json(
         { error: 'Project does not have a linked GitHub repository.' },
         { status: 400 }
@@ -45,17 +47,18 @@ export async function POST(
       );
     }
 
-    // Prevent concurrent duplicate runs triggered by double-clicks
     const activeRun = project.analyses.find(
       (a) =>
-        a.status === 'RUNNING' &&
-        Date.now() - new Date(a.createdAt).getTime() < 2 * 60 * 1000
+        (a.status === 'RUNNING' || a.status === 'QUEUED') &&
+        Date.now() - new Date(a.updatedAt).getTime() < 90 * 1000
     );
     if (activeRun) {
       return NextResponse.json({
         success: true,
         alreadyRunning: true,
+        completed: false,
         analysisId: activeRun.id,
+        snapshot: formatAnalysisProgress(activeRun),
         message: 'Repository synchronization and analysis is already in progress.',
       });
     }
@@ -63,7 +66,6 @@ export async function POST(
     const body = await request.json().catch(() => ({}));
     const force = Boolean(body?.force);
 
-    // Clear stale GitHub cache before probing live HEAD
     githubCache.invalidateRepo(project.githubOwner, project.githubRepositoryName);
 
     const recentCommits = await fetchRepoCommits(
@@ -79,7 +81,9 @@ export async function POST(
     );
 
     const remoteSha = recentCommits[0]?.sha || null;
-    const latestCompleted = project.analyses.find((a) => a.status === 'COMPLETED') || null;
+    const latestCompleted = project.analyses.find(
+      (a) => a.status === 'COMPLETED' || a.status === 'PARTIALLY_COMPLETED'
+    ) || null;
     const localSha = latestCompleted?.commitSha || project.repository?.currentCommitSha || null;
 
     if (
@@ -87,7 +91,8 @@ export async function POST(
       remoteSha &&
       localSha &&
       remoteSha === localSha &&
-      latestCompleted?.status === 'COMPLETED'
+      latestCompleted?.analyzerVersion === ANALYZER_VERSION &&
+      latestCompleted.status === 'COMPLETED'
     ) {
       await prisma.repository
         .updateMany({
@@ -99,44 +104,51 @@ export async function POST(
       invalidateProjectContextCache(projectId);
       invalidateOnboardingCache(projectId);
 
-      console.info(
-        `[MarrowNode Sync] upToDate projectId=${projectId} commit=${remoteSha.substring(0, 7)}`
-      );
-
       return NextResponse.json({
         success: true,
         upToDate: true,
+        completed: true,
         message: `Repository is already up to date with commit ${remoteSha.substring(0, 7)}.`,
         commitSha: remoteSha,
       });
     }
 
     const analysis = await createAnalysisRun(projectId, {
-      status: 'RUNNING',
-      analyzerVersion: 'v2.0',
+      status: 'QUEUED',
+      analyzerVersion: ANALYZER_VERSION,
       startedAt: new Date(),
     });
 
-    console.info(
-      `[MarrowNode Sync] started projectId=${projectId} analysisId=${analysis.id} targetSha=${remoteSha || 'HEAD'}`
-    );
-
-    const result = await executeDeterministicAnalysis({
+    await initializeResumableAnalysis({
       token,
+      userId: profile.id,
       projectId,
+      repositoryId: project.repository.id,
       analysisId: analysis.id,
       owner: project.githubOwner,
       repo: project.githubRepositoryName,
+    });
+
+    const stepResult = await processAnalysisStep({
+      token,
+      userId: profile.id,
+      projectId,
+      analysisId: analysis.id,
+      timeBudgetMs: STEP_TIME_BUDGET_MS,
     });
 
     return NextResponse.json({
       success: true,
       upToDate: false,
       reanalyzed: true,
-      message: `Synchronized and indexed commit ${remoteSha ? remoteSha.substring(0, 7) : 'HEAD'}.`,
+      completed: stepResult.completed,
+      status: stepResult.snapshot.status,
       analysisId: analysis.id,
       commitSha: remoteSha,
-      result,
+      snapshot: stepResult.snapshot,
+      message: stepResult.completed
+        ? `Synchronized and indexed commit ${remoteSha ? remoteSha.substring(0, 7) : 'HEAD'}.`
+        : `Sync started for commit ${remoteSha ? remoteSha.substring(0, 7) : 'HEAD'}; processing batches...`,
     });
   } catch (error: any) {
     const safe = getSafeErrorResponse(

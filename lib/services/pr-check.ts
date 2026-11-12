@@ -557,8 +557,13 @@ export function evaluatePullRequestImpactPure(input: EvaluatePrPureInput): PullR
   const parsedSrc = analysis.sourceFilesParsed;
   const srcPct = totalSrc > 0 ? Math.round((parsedSrc / totalSrc) * 100) : analysis.sourceCoveragePercent;
   const missingPct = totalSrc > 0 ? Math.max(0, 100 - srcPct) : 0;
-  const hasCompletedAnalysis = Boolean(analysis.analysisId) && analysis.status === 'COMPLETED';
-  const isPartialAnalysis = !hasCompletedAnalysis || (totalSrc > 0 && parsedSrc < totalSrc);
+  const hasCompletedAnalysis =
+    Boolean(analysis.analysisId) &&
+    (analysis.status === 'COMPLETED' || analysis.status === 'PARTIALLY_COMPLETED');
+  const isPartialAnalysis =
+    !hasCompletedAnalysis ||
+    analysis.status === 'PARTIALLY_COMPLETED' ||
+    (totalSrc > 0 && parsedSrc < totalSrc);
   const partialDisclosure = !hasCompletedAnalysis
     ? 'Repository has not completed deterministic indexing yet, so dependency blast radius is incomplete.'
     : isPartialAnalysis
@@ -771,7 +776,7 @@ export function evaluatePullRequestImpactPure(input: EvaluatePrPureInput): PullR
  */
 async function loadProjectAnalysisGraphContext(projectId: string) {
   const latestAnalysis = await prisma.analysis.findFirst({
-    where: { projectId, status: 'COMPLETED' },
+    where: { projectId, status: { in: ['COMPLETED', 'PARTIALLY_COMPLETED'] } },
     orderBy: { createdAt: 'desc' },
   });
 

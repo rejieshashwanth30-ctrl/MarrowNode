@@ -16,9 +16,12 @@ datasource db {
 
 enum AnalysisStatus {
   PENDING
+  QUEUED
   RUNNING
+  PARTIALLY_COMPLETED
   COMPLETED
   FAILED
+  CANCELLED
 
   @@schema("marrownode")
 }
@@ -95,6 +98,7 @@ model Project {
   analyses             Analysis[]
   evidences            Evidence[]
   pullRequestChecks    PullRequestCheck[]
+  commits              ProjectCommit[]
 
   @@index([ownerId])
   @@index([ownerId, isActive])
@@ -127,6 +131,8 @@ model Repository {
   updatedAt        DateTime  @updatedAt
 
   pullRequestChecks PullRequestCheck[]
+  commits           ProjectCommit[]
+  astCaches         AstFileCache[]
 
   @@map("repositories")
   @@schema("marrownode")
@@ -140,11 +146,12 @@ model Analysis {
   id                   String         @id @default(cuid())
   projectId            String
   project              Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  repositoryId         String?
   status               AnalysisStatus @default(PENDING)
   commitSha            String?
   branch               String?
   coverage             Float?
-  analyzerVersion      String?        @default("v1.0")
+  analyzerVersion      String?        @default("v3.0")
   startedAt            DateTime?
   completedAt          DateTime?
   filesAnalyzed        Int            @default(0)
@@ -152,12 +159,26 @@ model Analysis {
   dependenciesDetected Int            @default(0)
   architectureNodes    Int            @default(0)
   evidenceCount        Int            @default(0)
+  totalFiles           Int            @default(0)
+  processedFiles       Int            @default(0)
+  failedFiles          Int            @default(0)
+  ignoredFiles         Int            @default(0)
+  totalSourceFiles     Int            @default(0)
+  processedSourceFiles Int            @default(0)
+  totalBatches         Int            @default(0)
+  completedBatches     Int            @default(0)
+  currentBatch         Int            @default(0)
+  historyStatus        String         @default("PENDING")
+  totalCommitsIngested Int            @default(0)
+  historyNextPage      Int            @default(1)
+  failedFilesJson      Json?
   errorMessage         String?
   summaryJson          Json?
   createdAt            DateTime       @default(now())
   updatedAt            DateTime       @updatedAt
 
   pullRequestChecks    PullRequestCheck[]
+  batches              AnalysisBatch[]
 
   @@index([projectId])
   @@index([projectId, createdAt])
@@ -238,5 +259,81 @@ model PullRequestCheck {
   @@index([projectId, prNumber])
   @@index([repositoryId, prNumber])
   @@map("pull_request_checks")
+  @@schema("marrownode")
+}
+
+// -------------------------------------------------------------
+// SCALABLE BATCH ANALYSIS & INCREMENTAL AST CACHE
+// Resumable AST batches + blob-SHA keyed AST reuse
+// -------------------------------------------------------------
+model AnalysisBatch {
+  id                  String   @id @default(cuid())
+  analysisId          String
+  analysis            Analysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+  projectId           String
+  batchNumber         Int
+  status              String   @default("PENDING") // PENDING | RUNNING | COMPLETED | FAILED
+  fileCount           Int      @default(0)
+  processedCount      Int      @default(0)
+  failedCount         Int      @default(0)
+  locTotal            Int      @default(0)
+  fileManifestJson    Json?    // Array<{ path, sha? }>
+  parsedFilesJson     Json?    // Array<{ filePath, loc, imports, exports }>
+  failedFilesJson     Json?    // Array<{ path, reason, stage }>
+  startedAt           DateTime?
+  completedAt         DateTime?
+  error               String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@unique([analysisId, batchNumber])
+  @@index([analysisId, status])
+  @@index([projectId])
+  @@map("analysis_batches")
+  @@schema("marrownode")
+}
+
+model AstFileCache {
+  id              String     @id @default(cuid())
+  repositoryId    String
+  repository      Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  filePath        String
+  blobSha         String
+  analyzerVersion String     @default("v3.0")
+  loc             Int        @default(0)
+  parsedAstJson   Json
+  createdAt       DateTime   @default(now())
+
+  @@unique([repositoryId, filePath, blobSha, analyzerVersion])
+  @@index([repositoryId, analyzerVersion])
+  @@map("ast_file_cache")
+  @@schema("marrownode")
+}
+
+// -------------------------------------------------------------
+// PAGINATED GIT COMMIT HISTORY
+// Incremental, deduplicated commit persistence keyed by commit SHA
+// -------------------------------------------------------------
+model ProjectCommit {
+  id           String     @id @default(cuid())
+  projectId    String
+  project      Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  repositoryId String
+  repository   Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  commitSha    String
+  shortSha     String
+  branch       String     @default("main")
+  message      String
+  body         String?
+  eventType    String     @default("feature")
+  authorName   String     @default("Developer")
+  authorEmail  String?
+  committedAt  DateTime
+  createdAt    DateTime   @default(now())
+
+  @@unique([repositoryId, commitSha])
+  @@index([projectId, committedAt])
+  @@index([projectId, branch, committedAt])
+  @@map("project_commits")
   @@schema("marrownode")
 }

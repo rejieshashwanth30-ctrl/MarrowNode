@@ -106,6 +106,13 @@ export function ChangeImpactAnalysis({
   const [isLoadingImpact, setIsLoadingImpact] = useState<boolean>(false);
   const [impactError, setImpactError] = useState<string | null>(null);
   const [showAllTransitive, setShowAllTransitive] = useState<boolean>(false);
+  const [fileFilter, setFileFilter] = useState<string>('');
+
+  const filteredSourceFiles = React.useMemo(() => {
+    const q = fileFilter.trim().toLowerCase();
+    if (!q) return availableSourceFiles;
+    return availableSourceFiles.filter((f) => f.toLowerCase().includes(q));
+  }, [availableSourceFiles, fileFilter]);
 
   // Immediately clear stale project results when switching project
   useEffect(() => {
@@ -301,6 +308,15 @@ export function ChangeImpactAnalysis({
             <label className="text-xs font-medium text-text-primary dark:text-white block">
               What are you changing?
             </label>
+            {availableSourceFiles.length > 30 && (
+              <input
+                type="text"
+                value={fileFilter}
+                onChange={(e) => setFileFilter(e.target.value)}
+                placeholder={`Filter ${availableSourceFiles.length} analyzed files…`}
+                className="w-full h-8 px-2.5 bg-surface border border-border rounded text-xs font-sans text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-forest dark:bg-[#151C17] dark:border-border-dark dark:text-white"
+              />
+            )}
             <select
               value={selectedTarget}
               onChange={(e) => {
@@ -309,7 +325,7 @@ export function ChangeImpactAnalysis({
               }}
               className="w-full h-9 px-3 bg-surface border border-border rounded text-xs font-sans text-text-primary focus:outline-none focus:ring-1 focus:ring-forest dark:bg-[#151C17] dark:border-border-dark dark:text-white"
             >
-              {modules.length > 0 && (
+              {modules.length > 0 && !fileFilter.trim() && (
                 <optgroup label="Project Areas">
                   {modules.map((m) => (
                     <option key={`mod-${m}`} value={m}>
@@ -318,16 +334,16 @@ export function ChangeImpactAnalysis({
                   ))}
                 </optgroup>
               )}
-              {availableSourceFiles.length > 0 && (
-                <optgroup label="Analyzed Source Files">
-                  {availableSourceFiles.slice(0, 150).map((fp) => (
+              {filteredSourceFiles.length > 0 && (
+                <optgroup label={`Analyzed Source Files (${filteredSourceFiles.length})`}>
+                  {filteredSourceFiles.map((fp) => (
                     <option key={`file-${fp}`} value={fp}>
                       File: {fp}
                     </option>
                   ))}
                 </optgroup>
               )}
-              {modules.length === 0 && availableSourceFiles.length === 0 && (
+              {modules.length === 0 && filteredSourceFiles.length === 0 && (
                 <option value={selectedTarget}>{selectedTarget}</option>
               )}
             </select>

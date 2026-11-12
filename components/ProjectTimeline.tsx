@@ -1,16 +1,18 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { TimelineEvent } from '@/types';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { EvidenceBadge } from '@/components/ui/EvidenceBadge';
-import { GitCommit, Filter, ChevronDown, ChevronUp } from 'lucide-react';
+import { GitCommit, Filter, ChevronDown, ChevronUp, Search, Loader2 } from 'lucide-react';
 
 interface ProjectTimelineProps {
+  projectId?: string;
   events?: TimelineEvent[];
+  totalCommitsCount?: number;
   onSelectFile?: (filePath: string) => void;
   hasProject?: boolean;
   isAnalyzing?: boolean;
@@ -18,14 +20,65 @@ interface ProjectTimelineProps {
 }
 
 export function ProjectTimeline({
+  projectId,
   events = [],
+  totalCommitsCount,
   onSelectFile,
   hasProject = false,
   isAnalyzing = false,
   onConnectRepo,
 }: ProjectTimelineProps) {
   const [filterType, setFilterType] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState<string>('');
   const [expandedEvents, setExpandedEvents] = useState<Record<string, boolean>>({});
+  const [pagedEvents, setPagedEvents] = useState<TimelineEvent[]>(events);
+  const [serverTotal, setServerTotal] = useState<number>(totalCommitsCount ?? events.length);
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [hasMore, setHasMore] = useState<boolean>(
+    (totalCommitsCount ?? events.length) > events.length
+  );
+  const [loadingPage, setLoadingPage] = useState<boolean>(false);
+
+  useEffect(() => {
+    setPagedEvents(events);
+    setServerTotal(totalCommitsCount ?? events.length);
+    setCurrentPage(1);
+    setHasMore((totalCommitsCount ?? events.length) > events.length);
+  }, [projectId, events, totalCommitsCount]);
+
+  const fetchCommitsPage = useCallback(
+    async (page: number, typeVal: string, qVal: string, append: boolean) => {
+      if (!projectId) return;
+      setLoadingPage(true);
+      try {
+        const params = new URLSearchParams({
+          page: String(page),
+          limit: '50',
+          type: typeVal,
+          ...(qVal.trim() ? { q: qVal.trim() } : {}),
+        });
+        const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}/commits?${params.toString()}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (typeof data.totalCount === 'number' && data.totalCount > 0) {
+            setPagedEvents((prev) => (append ? [...prev, ...(data.events || [])] : data.events || []));
+            setServerTotal(data.totalCount);
+            setCurrentPage(page);
+            setHasMore(Boolean(data.hasMore));
+          } else if (!append && qVal.trim()) {
+            setPagedEvents([]);
+            setServerTotal(0);
+            setHasMore(false);
+          }
+        }
+      } catch {
+        // fallback cleanly to loaded prop events
+      } finally {
+        setLoadingPage(false);
+      }
+    },
+    [projectId]
+  );
 
   if (isAnalyzing) {
     return (
@@ -97,9 +150,12 @@ export function ProjectTimeline({
     setExpandedEvents((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
-  const filteredEvents = events.filter((ev) => {
-    if (filterType === 'all') return true;
-    return ev.type === filterType;
+  const filteredEvents = pagedEvents.filter((ev) => {
+    if (filterType !== 'all' && ev.type !== filterType) return false;
+    if (searchQuery.trim() && !projectId) {
+      return ev.title.toLowerCase().includes(searchQuery.trim().toLowerCase());
+    }
+    return true;
   });
 
   const getDotColor = (type: TimelineEvent['type']) => {
@@ -161,13 +217,39 @@ export function ProjectTimeline({
       </CardHeader>
 
       <CardContent className="p-3 sm:p-6">
-        <div className="mb-4 flex flex-wrap items-center gap-2 pb-2 border-b border-border dark:border-border-dark font-sans">
-          <span className="text-xs font-semibold uppercase tracking-wider text-text-primary dark:text-white px-2 py-0.5 bg-surface-muted rounded dark:bg-[#1A221D]">
-            Important Changes &amp; History
-          </span>
-          <span className="text-xs text-text-muted">
-            {filteredEvents.length} recent change{filteredEvents.length === 1 ? '' : 's'} shown
-          </span>
+        <div className="mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-border dark:border-border-dark font-sans">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-semibold uppercase tracking-wider text-text-primary dark:text-white px-2 py-0.5 bg-surface-muted rounded dark:bg-[#1A221D]">
+              Important Changes &amp; History
+            </span>
+            <span className="text-xs text-text-muted">
+              Showing {filteredEvents.length} of {Math.max(serverTotal, filteredEvents.length)} commit(s)
+            </span>
+          </div>
+
+          {projectId && (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                fetchCommitsPage(1, filterType, searchQuery, false);
+              }}
+              className="flex items-center gap-1.5 w-full sm:w-auto"
+            >
+              <div className="relative flex-1 sm:w-56">
+                <Search className="w-3.5 h-3.5 text-text-muted absolute left-2.5 top-2 pointer-events-none" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search commits or SHA…"
+                  className="w-full h-8 pl-8 pr-2.5 rounded border border-border bg-surface text-xs text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-forest dark:bg-[#151C17] dark:border-border-dark dark:text-white"
+                />
+              </div>
+              <Button type="submit" variant="secondary" size="sm" disabled={loadingPage}>
+                Search
+              </Button>
+            </form>
+          )}
         </div>
 
         <div className="relative pl-5 sm:pl-8 space-y-5 sm:space-y-6 before:absolute before:left-2 sm:before:left-3 before:top-2 before:bottom-2 before:w-[1.5px] before:bg-border dark:before:bg-border-dark">
@@ -278,6 +360,26 @@ export function ProjectTimeline({
             );
           })}
         </div>
+
+        {hasMore && projectId && (
+          <div className="mt-5 pt-4 border-t border-border dark:border-border-dark flex justify-center">
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={loadingPage}
+              onClick={() => fetchCommitsPage(currentPage + 1, filterType, searchQuery, true)}
+            >
+              {loadingPage ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                  Loading commits…
+                </>
+              ) : (
+                `Load more commits (${Math.max(0, serverTotal - pagedEvents.length)} remaining)`
+              )}
+            </Button>
+          </div>
+        )}
       </CardContent>
     </Card>
   );

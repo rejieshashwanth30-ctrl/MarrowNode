@@ -60,16 +60,26 @@ export async function getGitHubTokenForCurrentUser(): Promise<{
   };
 }
 
+export interface GitHubResponseMeta {
+  status: number;
+  rateLimitRemaining: number | null;
+  rateLimitResetAt: number | null;
+  hasNextPage: boolean;
+}
+
+function delayMs(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 /**
- * Server-Side GitHub REST API Caller.
- * Automatically injects authentication, versioning, and user-agent headers.
+ * Server-Side GitHub REST API Caller with bounded retries, 429/5xx backoff, and rate-limit headers.
  * NEVER exposes tokens to client responses.
  */
-export async function githubRequest<T>(
+export async function githubRequestWithMeta<T>(
   endpoint: string,
   token: string,
   options: RequestInit = {}
-): Promise<T> {
+): Promise<{ data: T; meta: GitHubResponseMeta }> {
   const url = endpoint.startsWith('http') ? endpoint : `https://api.github.com${endpoint}`;
 
   const headers: Record<string, string> = {
@@ -80,38 +90,104 @@ export async function githubRequest<T>(
     ...((options.headers as Record<string, string>) || {}),
   };
 
-  const response = await fetch(url, {
-    ...options,
-    headers,
-    cache: 'no-store',
-  });
+  const maxAttempts = 3;
+  let lastErr: unknown;
 
-  if (!response.ok) {
-    let errorDetail = `GitHub API request failed with status ${response.status}`;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      const errorJson = await response.json();
-      if (errorJson.message) {
-        errorDetail = errorJson.message;
-      }
-    } catch (_) {}
+      const response = await fetch(url, {
+        ...options,
+        headers,
+        cache: 'no-store',
+        signal: options.signal ?? AbortSignal.timeout(12000),
+      });
 
-    if (response.status === 401) {
-      throw new GitHubApiError('GitHub authentication expired or token revoked. Please reconnect GitHub.', 401);
-    }
-    if (response.status === 403) {
-      if (errorDetail.toLowerCase().includes('rate limit')) {
-        throw new GitHubApiError('GitHub API rate limit reached. Please try again later.', 403);
-      }
-      throw new GitHubApiError(`GitHub access forbidden: ${errorDetail}`, 403);
-    }
-    if (response.status === 404) {
-      throw new GitHubApiError(`GitHub resource not found: ${errorDetail}`, 404);
-    }
+      const remainingHeader = response.headers.get('x-ratelimit-remaining');
+      const resetHeader = response.headers.get('x-ratelimit-reset');
+      const retryAfterHeader = response.headers.get('retry-after');
+      const linkHeader = response.headers.get('link') || '';
 
-    throw new GitHubApiError(errorDetail, response.status);
+      const rateLimitRemaining = remainingHeader !== null ? Number(remainingHeader) : null;
+      const rateLimitResetAt = resetHeader !== null ? Number(resetHeader) * 1000 : null;
+      const hasNextPage = /rel="next"/i.test(linkHeader);
+
+      if (response.ok) {
+        const data = (await response.json()) as T;
+        return {
+          data,
+          meta: {
+            status: response.status,
+            rateLimitRemaining: Number.isFinite(rateLimitRemaining) ? rateLimitRemaining : null,
+            rateLimitResetAt: Number.isFinite(rateLimitResetAt) ? rateLimitResetAt : null,
+            hasNextPage,
+          },
+        };
+      }
+
+      let errorDetail = `GitHub API request failed with status ${response.status}`;
+      try {
+        const errorJson = await response.json();
+        if (errorJson.message) errorDetail = errorJson.message;
+      } catch (_) {}
+
+      const isTransient =
+        response.status === 429 ||
+        response.status === 502 ||
+        response.status === 503 ||
+        response.status === 504 ||
+        (response.status === 403 && retryAfterHeader !== null);
+
+      if (isTransient && attempt < maxAttempts) {
+        const retrySec = retryAfterHeader ? Number(retryAfterHeader) : NaN;
+        const backoffMs = Number.isFinite(retrySec)
+          ? Math.min(Math.max(retrySec * 1000, 300), 4500)
+          : Math.min(500 * Math.pow(2, attempt - 1), 3000);
+        await delayMs(backoffMs);
+        continue;
+      }
+
+      if (response.status === 401) {
+        throw new GitHubApiError(
+          'GitHub authentication expired or token revoked. Please reconnect GitHub.',
+          401
+        );
+      }
+      if (response.status === 403 || response.status === 429) {
+        if (errorDetail.toLowerCase().includes('rate limit') || response.status === 429) {
+          throw new GitHubApiError('GitHub API rate limit reached. Please wait and resume.', response.status);
+        }
+        throw new GitHubApiError(`GitHub access forbidden: ${errorDetail}`, 403);
+      }
+      if (response.status === 404) {
+        throw new GitHubApiError(`GitHub resource not found: ${errorDetail}`, 404);
+      }
+
+      throw new GitHubApiError(errorDetail, response.status);
+    } catch (err: any) {
+      lastErr = err;
+      if (err instanceof GitHubApiError || err?.name === 'AbortError') {
+        if (attempt >= maxAttempts || err instanceof GitHubApiError) {
+          throw err;
+        }
+      }
+      if (attempt < maxAttempts) {
+        await delayMs(400 * attempt);
+        continue;
+      }
+      throw lastErr;
+    }
   }
 
-  return response.json() as Promise<T>;
+  throw lastErr instanceof Error ? lastErr : new GitHubApiError('GitHub API request failed', 500);
+}
+
+export async function githubRequest<T>(
+  endpoint: string,
+  token: string,
+  options: RequestInit = {}
+): Promise<T> {
+  const { data } = await githubRequestWithMeta<T>(endpoint, token, options);
+  return data;
 }
 
 /**
@@ -191,9 +267,10 @@ export async function fetchUserRepositories(
 export async function fetchRepositoryDetails(
   token: string,
   owner: string,
-  repo: string
+  repo: string,
+  userScope = 'default'
 ): Promise<GitHubRepositoryItem> {
-  const cacheKey = `${owner.toLowerCase()}/${repo.toLowerCase()}:details`;
+  const cacheKey = `${owner.toLowerCase()}/${repo.toLowerCase()}:u:${userScope}:details`;
   return githubCache.fetchWithCache(
     cacheKey,
     'repo_details',
@@ -209,7 +286,8 @@ export async function fetchRepoTree(
   token: string,
   owner: string,
   repo: string,
-  treeSha: string
+  treeSha: string,
+  userScope = 'default'
 ): Promise<{
   sha: string;
   truncated: boolean;
@@ -221,7 +299,7 @@ export async function fetchRepoTree(
     size?: number;
   }>;
 }> {
-  const cacheKey = `${owner.toLowerCase()}/${repo.toLowerCase()}:tree:${treeSha}`;
+  const cacheKey = `${owner.toLowerCase()}/${repo.toLowerCase()}:u:${userScope}:tree:${treeSha}`;
   return githubCache.fetchWithCache(
     cacheKey,
     'repo_tree',
@@ -241,14 +319,85 @@ export async function fetchRepoTree(
 export async function fetchRepoLanguages(
   token: string,
   owner: string,
-  repo: string
+  repo: string,
+  userScope = 'default'
 ): Promise<Record<string, number>> {
-  const cacheKey = `${owner.toLowerCase()}/${repo.toLowerCase()}:languages`;
+  const cacheKey = `${owner.toLowerCase()}/${repo.toLowerCase()}:u:${userScope}:languages`;
   return githubCache.fetchWithCache(
     cacheKey,
     'repo_languages',
     () => githubRequest(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/languages`, token),
     5 * 60 * 1000
+  );
+}
+
+export interface GitHubCommitItem {
+  sha: string;
+  commit: {
+    message: string;
+    author: {
+      name: string;
+      email: string;
+      date: string;
+    } | null;
+  };
+  html_url: string;
+}
+
+/**
+ * Fetch a specific page of GitHub commits (up to 100/page) with Link rel="next" pagination flag.
+ * Cache key includes userScope + owner/repo + branch + page + perPage.
+ */
+export async function fetchRepoCommitsPaginated(params: {
+  token: string;
+  owner: string;
+  repo: string;
+  branch?: string;
+  page?: number;
+  perPage?: number;
+  userScope?: string;
+  bypassCache?: boolean;
+}): Promise<{
+  commits: GitHubCommitItem[];
+  hasNextPage: boolean;
+  rateLimitRemaining: number | null;
+}> {
+  const {
+    token,
+    owner,
+    repo,
+    branch,
+    page = 1,
+    perPage = 100,
+    userScope = 'default',
+    bypassCache = false,
+  } = params;
+
+  const branchParam = branch ? `&sha=${encodeURIComponent(branch)}` : '';
+  const endpoint = `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/commits?per_page=${perPage}&page=${page}${branchParam}`;
+  const cacheKey = `${owner.toLowerCase()}/${repo.toLowerCase()}:u:${userScope}:commits:${branch || 'default'}:p${page}:${perPage}`;
+
+  if (bypassCache) {
+    const { data, meta } = await githubRequestWithMeta<GitHubCommitItem[]>(endpoint, token);
+    return {
+      commits: data,
+      hasNextPage: meta.hasNextPage,
+      rateLimitRemaining: meta.rateLimitRemaining,
+    };
+  }
+
+  return githubCache.fetchWithCache(
+    cacheKey,
+    'repo_commits_page',
+    async () => {
+      const { data, meta } = await githubRequestWithMeta<GitHubCommitItem[]>(endpoint, token);
+      return {
+        commits: data,
+        hasNextPage: meta.hasNextPage,
+        rateLimitRemaining: meta.rateLimitRemaining,
+      };
+    },
+    30 * 1000
   );
 }
 
@@ -261,36 +410,18 @@ export async function fetchRepoCommits(
   repo: string,
   perPage = 10,
   options?: { branch?: string; bypassCache?: boolean; userScope?: string }
-): Promise<
-  Array<{
-    sha: string;
-    commit: {
-      message: string;
-      author: {
-        name: string;
-        email: string;
-        date: string;
-      } | null;
-    };
-    html_url: string;
-  }>
-> {
-  const branchParam = options?.branch ? `&sha=${encodeURIComponent(options.branch)}` : '';
-  const endpoint = `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/commits?per_page=${perPage}${branchParam}`;
-
-  if (options?.bypassCache) {
-    return githubRequest(endpoint, token);
-  }
-
-  const scope = options?.userScope || 'default';
-  const branchKey = options?.branch || 'default';
-  const cacheKey = `${owner.toLowerCase()}/${repo.toLowerCase()}:u:${scope}:commits:${branchKey}:${perPage}`;
-  return githubCache.fetchWithCache(
-    cacheKey,
-    'repo_commits',
-    () => githubRequest(endpoint, token),
-    30 * 1000
-  );
+): Promise<GitHubCommitItem[]> {
+  const res = await fetchRepoCommitsPaginated({
+    token,
+    owner,
+    repo,
+    branch: options?.branch,
+    page: 1,
+    perPage,
+    userScope: options?.userScope,
+    bypassCache: options?.bypassCache,
+  });
+  return res.commits;
 }
 
 /**
@@ -337,45 +468,63 @@ export async function verifyRepositoryHeadSha(params: {
 }
 
 /**
- * Fetch raw file content (e.g., README.md, package.json, requirements.txt, tsconfig.json)
- * Encodes each path segment individually so directory separators remain intact.
+ * Fetch raw file content (e.g., README.md, package.json, tsconfig.json, or source file).
+ * Keyed strictly by user scope + repository + commitSha/blobSha + path.
+ * Supports skipMemoryCache when batch ingestion stores AST immediately into Neon.
  */
 export async function fetchRepoFileContent(
   token: string,
   owner: string,
   repo: string,
   path: string,
-  commitSha?: string
+  commitSha?: string,
+  options?: {
+    blobSha?: string;
+    userScope?: string;
+    skipMemoryCache?: boolean;
+    throwOnRateLimit?: boolean;
+  }
 ): Promise<string | null> {
   const cleanPath = path.replace(/^\/+/, '');
-  const cacheKey = `${owner.toLowerCase()}/${repo.toLowerCase()}:file:${cleanPath}:${commitSha || 'head'}`;
+  const scope = options?.userScope || 'default';
+  const versionKey = options?.blobSha || commitSha || 'head';
+  const cacheKey = `${owner.toLowerCase()}/${repo.toLowerCase()}:u:${scope}:file:${cleanPath}:${versionKey}`;
+
+  const loader = async (): Promise<string | null> => {
+    try {
+      const encodedPath = cleanPath
+        .split('/')
+        .map((segment) => encodeURIComponent(segment))
+        .join('/');
+
+      const queryParam = commitSha ? `?ref=${encodeURIComponent(commitSha)}` : '';
+      const data = await githubRequest<{
+        content: string;
+        encoding: string;
+      }>(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${encodedPath}${queryParam}`, token);
+
+      if (data.encoding === 'base64' && data.content) {
+        return Buffer.from(data.content.replace(/\n/g, ''), 'base64').toString('utf8');
+      }
+      return null;
+    } catch (err) {
+      if (options?.throwOnRateLimit && err instanceof GitHubApiError && (err.isRateLimit || err.statusCode === 429 || err.isAuthError)) {
+        throw err;
+      }
+      return null;
+    }
+  };
+
+  if (options?.skipMemoryCache) {
+    return loader();
+  }
 
   return githubCache.fetchWithCache(
     cacheKey,
     'file_content',
-    async () => {
-      try {
-        const encodedPath = cleanPath
-          .split('/')
-          .map((segment) => encodeURIComponent(segment))
-          .join('/');
-
-        const queryParam = commitSha ? `?ref=${encodeURIComponent(commitSha)}` : '';
-        const data = await githubRequest<{
-          content: string;
-          encoding: string;
-        }>(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${encodedPath}${queryParam}`, token);
-
-        if (data.encoding === 'base64' && data.content) {
-          return Buffer.from(data.content.replace(/\n/g, ''), 'base64').toString('utf8');
-        }
-        return null;
-      } catch (err) {
-        return null;
-      }
-    },
+    loader,
     15 * 60 * 1000,
-    commitSha
+    versionKey
   );
 }
 

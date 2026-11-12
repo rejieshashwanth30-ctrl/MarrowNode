@@ -57,6 +57,18 @@ export default function DashboardPage() {
 
   const [syncStatusMessage, setSyncStatusMessage] = useState<string | null>(null);
   const [focusedFilePath, setFocusedFilePath] = useState<string | undefined>(undefined);
+  const [analysisProgress, setAnalysisProgress] = useState<{
+    analysisId: string;
+    status: string;
+    totalSourceFiles: number;
+    processedSourceFiles: number;
+    failedFiles: number;
+    totalBatches: number;
+    completedBatches: number;
+    totalCommitsIngested: number;
+    historyStatus: string;
+  } | null>(null);
+  const activeStepRunRef = React.useRef<string | null>(null);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -154,6 +166,8 @@ export default function DashboardPage() {
   }, []);
 
   const handleSelectProject = async (projectId: string) => {
+    activeStepRunRef.current = null;
+    setAnalysisProgress(null);
     setSelectedProjectId(projectId);
     // Clear previous project state immediately so stale data never flashes across switches
     setProjectContext(null);
@@ -181,6 +195,81 @@ export default function DashboardPage() {
     }
   };
 
+  const driveAnalysisSteps = async (projectId: string, analysisId: string) => {
+    if (activeStepRunRef.current === analysisId) return;
+    activeStepRunRef.current = analysisId;
+    setIsAnalyzing(true);
+    try {
+      let completed = false;
+      for (let i = 0; i < 80 && !completed; i++) {
+        if (activeStepRunRef.current !== analysisId) break;
+        const stepRes = await fetch(`/api/projects/${encodeURIComponent(projectId)}/analyze/step`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ analysisId }),
+        });
+        const stepData = await stepRes.json();
+        if (!stepRes.ok) {
+          setAnalysisError(stepData.error || 'Analysis step paused cleanly. Click Analyze again to resume.');
+          break;
+        }
+        if (stepData.snapshot) {
+          setAnalysisProgress(stepData.snapshot);
+        }
+        completed = Boolean(stepData.completed);
+        if (!completed) {
+          await new Promise((r) => setTimeout(r, 250));
+        }
+      }
+      if (completed) {
+        setAnalysisProgress(null);
+        await fetchDashboardData(projectId);
+      }
+    } catch (err: any) {
+      setAnalysisError(err?.message || 'Unable to resume analysis step.');
+    } finally {
+      if (activeStepRunRef.current === analysisId) {
+        activeStepRunRef.current = null;
+      }
+      setIsAnalyzing(false);
+    }
+  };
+
+  // Recover and resume active queued/running analysis cleanly after page refresh (#37)
+  useEffect(() => {
+    if (
+      selectedProjectId &&
+      projectContext?.activeProgress?.analysisId &&
+      (projectContext.activeProgress.status === 'RUNNING' ||
+        projectContext.activeProgress.status === 'QUEUED') &&
+      activeStepRunRef.current !== projectContext.activeProgress.analysisId
+    ) {
+      setAnalysisProgress({
+        ...projectContext.activeProgress,
+        failedFiles: 0,
+      });
+      driveAnalysisSteps(selectedProjectId, projectContext.activeProgress.analysisId);
+    }
+  }, [selectedProjectId, projectContext?.activeProgress?.analysisId]);
+
+  const handleCancelAnalysis = async () => {
+    if (!selectedProjectId || !analysisProgress?.analysisId) return;
+    const cancelId = analysisProgress.analysisId;
+    activeStepRunRef.current = null;
+    try {
+      await fetch(`/api/projects/${encodeURIComponent(selectedProjectId)}/analyze/cancel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ analysisId: cancelId }),
+      });
+      setAnalysisProgress(null);
+      setIsAnalyzing(false);
+      await fetchDashboardData(selectedProjectId);
+    } catch {
+      // ignore cancel UI glitch
+    }
+  };
+
   const handleSyncProject = async () => {
     if (!selectedProjectId) return;
     setIsRefreshing(true);
@@ -193,9 +282,15 @@ export default function DashboardPage() {
       const data = await res.json();
 
       if (res.ok) {
-        setSyncStatusMessage(data.message || 'Project updated with latest changes.');
-        setTimeout(() => setSyncStatusMessage(null), 4000);
-        await fetchDashboardData(selectedProjectId);
+        if (data.snapshot && !data.completed && data.analysisId) {
+          setAnalysisProgress(data.snapshot);
+          setSyncStatusMessage(data.message || 'Sync started; processing repository batches…');
+          driveAnalysisSteps(selectedProjectId, data.analysisId);
+        } else {
+          setSyncStatusMessage(data.message || 'Project updated with latest changes.');
+          setTimeout(() => setSyncStatusMessage(null), 4000);
+          await fetchDashboardData(selectedProjectId);
+        }
       } else {
         setAnalysisError(data.error || 'Could not sync changes. Try syncing again.');
       }
@@ -221,12 +316,20 @@ export default function DashboardPage() {
 
       if (!res.ok) {
         setAnalysisError(data.error || 'Could not finish analyzing this project. Please try again.');
+        setIsAnalyzing(false);
+        return;
+      }
+
+      if (data.snapshot && !data.completed && data.analysisId) {
+        setAnalysisProgress(data.snapshot);
+        await driveAnalysisSteps(id, data.analysisId);
       } else {
+        setAnalysisProgress(null);
         await fetchDashboardData(id);
+        setIsAnalyzing(false);
       }
     } catch (err: any) {
       setAnalysisError(err?.message || 'Unable to start project analysis right now.');
-    } finally {
       setIsAnalyzing(false);
     }
   };
@@ -298,6 +401,47 @@ export default function DashboardPage() {
             isAnalyzing={isAnalyzing}
             onConnectRepo={() => setShowRepoModal(true)}
           />
+
+          {/* Live Resumable Batch & History Progress Indicator (#36) */}
+          {analysisProgress && (
+            <div className="p-3.5 mx-3 sm:mx-6 mt-3 rounded bg-forest/10 border border-forest/30 text-xs space-y-2 font-sans">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="font-medium text-text-primary dark:text-white flex items-center gap-2">
+                  <RefreshCw className="w-3.5 h-3.5 text-forest animate-spin shrink-0" />
+                  <span>
+                    Analyzing repository ({analysisProgress.processedSourceFiles} / {analysisProgress.totalSourceFiles} source files)
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-[11px] text-text-muted">
+                    Batch {analysisProgress.completedBatches}/{Math.max(1, analysisProgress.totalBatches)} · {analysisProgress.totalCommitsIngested} commits ({analysisProgress.historyStatus.toLowerCase()})
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleCancelAnalysis}
+                    className="text-[11px] font-medium text-copper hover:underline"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+              {analysisProgress.totalBatches > 0 && (
+                <div className="w-full h-1.5 rounded-full bg-surface border border-border overflow-hidden">
+                  <div
+                    className="h-full bg-forest transition-all duration-300"
+                    style={{
+                      width: `${Math.min(
+                        100,
+                        Math.round(
+                          (analysisProgress.completedBatches / analysisProgress.totalBatches) * 100
+                        )
+                      )}%`,
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Mandatory Stale / Unverified Freshness Disclosure */}
           {selectedProject &&
@@ -546,7 +690,9 @@ export default function DashboardPage() {
                   projectId={selectedProject.id}
                   hasAnalyzedProject={Boolean(
                     projectContext?.latestAnalysis?.status === 'COMPLETED' ||
-                      latestAnalysis?.status === 'COMPLETED'
+                      projectContext?.latestAnalysis?.status === 'PARTIALLY_COMPLETED' ||
+                      latestAnalysis?.status === 'COMPLETED' ||
+                      latestAnalysis?.status === 'PARTIALLY_COMPLETED'
                   )}
                   onConnectRepo={() => setShowRepoModal(true)}
                 />
@@ -707,7 +853,9 @@ export default function DashboardPage() {
               <div className="animate-in fade-in-50 duration-150">
                 <ProjectTimeline
                   key={selectedProject?.id || 'no-proj-timeline'}
+                  projectId={selectedProject?.id}
                   events={projectContext?.timeline || []}
+                  totalCommitsCount={projectContext?.historyTotalCount}
                   hasProject={Boolean(selectedProject)}
                   isAnalyzing={isAnalyzing || selectedProject?.analysisStatus === 'RUNNING'}
                   onConnectRepo={() => setShowRepoModal(true)}
@@ -723,7 +871,9 @@ export default function DashboardPage() {
                   projectId={selectedProject?.id}
                   hasAnalyzedProject={Boolean(
                     projectContext?.latestAnalysis?.status === 'COMPLETED' ||
-                      latestAnalysis?.status === 'COMPLETED'
+                      projectContext?.latestAnalysis?.status === 'PARTIALLY_COMPLETED' ||
+                      latestAnalysis?.status === 'COMPLETED' ||
+                      latestAnalysis?.status === 'PARTIALLY_COMPLETED'
                   )}
                   hasProject={Boolean(selectedProject)}
                   isAnalyzing={isAnalyzing || selectedProject?.analysisStatus === 'RUNNING'}
@@ -741,7 +891,9 @@ export default function DashboardPage() {
                   initialFile={focusedFilePath}
                   hasAnalyzedProject={Boolean(
                     projectContext?.latestAnalysis?.status === 'COMPLETED' ||
-                      latestAnalysis?.status === 'COMPLETED'
+                      projectContext?.latestAnalysis?.status === 'PARTIALLY_COMPLETED' ||
+                      latestAnalysis?.status === 'COMPLETED' ||
+                      latestAnalysis?.status === 'PARTIALLY_COMPLETED'
                   )}
                   hasProject={Boolean(selectedProject)}
                   isAnalyzing={isAnalyzing || selectedProject?.analysisStatus === 'RUNNING'}

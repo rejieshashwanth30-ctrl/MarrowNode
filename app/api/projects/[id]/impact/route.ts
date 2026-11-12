@@ -66,7 +66,10 @@ export async function GET(
       );
     }
 
-    const completedAnalysis = project.analyses.find((a) => a.status === 'COMPLETED') || null;
+    const completedAnalysis =
+      project.analyses.find(
+        (a) => a.status === 'COMPLETED' || a.status === 'PARTIALLY_COMPLETED'
+      ) || null;
     const latestAnalysis = completedAnalysis || project.analyses[0] || null;
     const engineKey = `${profile.id}:${projectId}:${latestAnalysis?.id || 'none'}`;
     let graphEngine = engineCache.get(engineKey);

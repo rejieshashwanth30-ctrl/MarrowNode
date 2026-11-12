@@ -87,7 +87,12 @@ export function classifyQueryIntent(query: string): QueryIntent {
     q.includes('impact of') ||
     q.includes('affected if') ||
     q.includes('downstream') ||
-    q.includes('consumers of')
+    q.includes('consumers of') ||
+    q.includes('who imports') ||
+    q.includes('what imports') ||
+    q.includes('who uses') ||
+    q.includes('what uses') ||
+    q.includes('imported by')
   ) {
     return 'IMPACT';
   }
@@ -258,8 +263,17 @@ export function synthesizeAskAnswerPure(params: {
   context: ProjectWorkstationContext;
   dependencyEdges: DependencyEdge[];
   query: string;
+  historicalCommits?: Array<{
+    commitSha: string;
+    shortSha: string;
+    message: string;
+    authorName: string;
+    committedAt: Date | string;
+    eventType?: string;
+  }>;
+  totalCommitsCount?: number;
 }): AskProjectResult {
-  const { context, dependencyEdges, query } = params;
+  const { context, dependencyEdges, query, historicalCommits, totalCommitsCount } = params;
   const trimmed = query.trim();
   const q = trimmed.toLowerCase();
   const intent = classifyQueryIntent(trimmed);
@@ -482,7 +496,10 @@ export function synthesizeAskAnswerPure(params: {
     case 'IMPACT': {
       // Clean target path extraction
       const stripped = trimmed
-        .replace(/^(?:what\s+breaks\s+if\s+i\s+change|what\s+depends\s+on|blast\s+radius\s+of|impact\s+of|what\s+uses|consumers\s+of)\s+/i, '')
+        .replace(
+          /^(?:what\s+breaks\s+if\s+i\s+change|what\s+depends\s+on|blast\s+radius\s+of|impact\s+of|what\s+uses|who\s+uses|what\s+imports|who\s+imports|consumers\s+of)\s+/i,
+          ''
+        )
         .replace(/[?'"`]/g, '')
         .trim();
 
@@ -522,42 +539,65 @@ export function synthesizeAskAnswerPure(params: {
     }
 
     case 'HISTORY': {
-      if (context.timeline.length > 0) {
+      const effectiveTotal = Math.max(totalCommitsCount ?? 0, context.timeline.length);
+      const sourceEntries =
+        historicalCommits && historicalCommits.length > 0
+          ? historicalCommits.map((c) => ({
+              commitShort: c.shortSha,
+              date: new Date(c.committedAt).toISOString().split('T')[0],
+              author: { name: c.authorName },
+              title: c.message.split('\n')[0],
+              explanation: c.message,
+            }))
+          : context.timeline;
+
+      if (sourceEntries.length > 0 || effectiveTotal > 0) {
         const stop = new Set([
           'when', 'what', 'which', 'commit', 'commits', 'history', 'recent',
           'recently', 'changed', 'change', 'introduced', 'added', 'project', 'this',
+          'ago', 'month', 'months', 'from',
         ]);
         const words = q.split(/\s+/).filter((w) => w.length > 3 && !stop.has(w));
+        const isNthOrDateQuery =
+          /commit\s*#?\d+/.test(q) || /(\d+|six|one|three|two|twelve)\s+month/.test(q);
         const matches =
-          words.length > 0 && !q.includes('changed recently') && !q.includes('recent change')
-            ? context.timeline.filter((c) =>
-                words.some(
-                  (w) => c.title.toLowerCase().includes(w) || c.explanation.toLowerCase().includes(w)
+          historicalCommits && historicalCommits.length > 0
+            ? sourceEntries
+            : words.length > 0 && !q.includes('changed recently') && !q.includes('recent change')
+              ? sourceEntries.filter((c) =>
+                  words.some(
+                    (w) => c.title.toLowerCase().includes(w) || c.explanation.toLowerCase().includes(w)
+                  )
                 )
-              )
-            : context.timeline.slice(0, 5);
+              : sourceEntries.slice(0, 5);
 
         if (matches.length > 0) {
-          fact = `Observed in recent Git history (${context.timeline.length} commits indexed on ${context.project.defaultBranch}):\n` +
+          fact =
+            `Observed in indexed Git history (${effectiveTotal} commit(s) indexed on ${context.project.defaultBranch}):\n` +
             matches
-              .slice(0, 4)
+              .slice(0, 5)
               .map((c) => `• ${c.commitShort} (${c.date}) by ${c.author.name}: "${c.title}"`)
               .join('\n');
-          inference = `These commits show observed changes on branch ${context.project.defaultBranch}.`;
+          inference = `These commits show observed changes across the ${effectiveTotal} indexed commit(s) on branch ${context.project.defaultBranch}.`;
           unknown = isMotivationQuery
             ? 'Commit subjects show what changed; architectural rationale outside commit messages cannot be confirmed.'
-            : 'Commits older than the indexed history window are not included here.';
-          matches.slice(0, 3).forEach((c) =>
+            : isNthOrDateQuery
+              ? 'Only commit metadata and subjects are indexed here; full line-by-line diffs require fetching individual commits.'
+              : 'Older commits not yet ingested (if repository history indexing is incomplete) are not included.';
+          matches.slice(0, 4).forEach((c) =>
             citations.push({ path: c.commitShort, label: `Commit ${c.commitShort}`, type: 'Commit' })
           );
         } else {
-          fact = `None of the ${context.timeline.length} indexed recent commits mention "${words.join(' ')}".`;
-          unknown = 'This change may have occurred in older commits outside the indexed history window.';
+          fact = `None of the ${effectiveTotal} indexed commits mention "${words.join(' ') || trimmed}".`;
+          unknown =
+            context.latestAnalysis?.freshness === 'PARTIAL'
+              ? 'This commit was not found in the currently indexed history window and full history indexing has not completed yet.'
+              : `This query did not match any of the ${effectiveTotal} indexed commits on ${context.project.defaultBranch}.`;
           confidence = 'Medium';
         }
       } else {
         fact = 'No commit history has been indexed for this repository yet.';
-        unknown = 'Git commit history is unavailable.';
+        unknown = 'Git commit history is unavailable until repository synchronization runs.';
         confidence = 'Low';
       }
       break;
@@ -793,10 +833,88 @@ export async function askProjectQuestion(params: {
     ? archMeta.dependencyEdges
     : [];
 
+  // If HISTORY intent, query across ALL indexed ProjectCommit rows in Neon (no 30-commit limit)
+  let historicalCommits: Array<{
+    commitSha: string;
+    shortSha: string;
+    message: string;
+    authorName: string;
+    committedAt: Date;
+    eventType: string;
+  }> = [];
+  let totalCommitsCount = context.historyTotalCount ?? context.timeline.length;
+
+  if (intent === 'HISTORY') {
+    const branch = context.project.defaultBranch || 'main';
+    totalCommitsCount = await prisma.projectCommit
+      .count({ where: { projectId, branch } })
+      .catch(() => totalCommitsCount);
+
+    if (totalCommitsCount > 0) {
+      const qLower = trimmedQuery.toLowerCase();
+      const nthMatch = qLower.match(/commit\s*#?(\d+)/);
+      const monthsMatch = qLower.match(/(\d+|six|one|three|two|twelve)\s+month/);
+      const wordMap: Record<string, number> = { one: 1, two: 2, three: 3, six: 6, twelve: 12 };
+
+      if (nthMatch) {
+        const nth = Math.max(1, parseInt(nthMatch[1], 10));
+        historicalCommits = await prisma.projectCommit.findMany({
+          where: { projectId, branch },
+          orderBy: { committedAt: 'desc' },
+          skip: nth - 1,
+          take: 3,
+        });
+      } else if (monthsMatch) {
+        const numMonths = Number(monthsMatch[1]) || wordMap[monthsMatch[1]] || 6;
+        const targetDate = new Date();
+        targetDate.setMonth(targetDate.getMonth() - numMonths);
+        const startWindow = new Date(targetDate.getTime() - 21 * 24 * 60 * 60 * 1000);
+        const endWindow = new Date(targetDate.getTime() + 21 * 24 * 60 * 60 * 1000);
+        historicalCommits = await prisma.projectCommit.findMany({
+          where: {
+            projectId,
+            branch,
+            committedAt: { gte: startWindow, lte: endWindow },
+          },
+          orderBy: { committedAt: 'desc' },
+          take: 10,
+        });
+      } else {
+        const stopWords = new Set([
+          'when', 'what', 'which', 'commit', 'commits', 'history', 'recent',
+          'recently', 'changed', 'change', 'introduced', 'added', 'project', 'this',
+        ]);
+        const keywords = qLower
+          .split(/\s+/)
+          .filter((w) => w.length > 3 && !stopWords.has(w));
+
+        if (keywords.length > 0 && !qLower.includes('changed recently') && !qLower.includes('recent change')) {
+          historicalCommits = await prisma.projectCommit.findMany({
+            where: {
+              projectId,
+              branch,
+              OR: keywords.map((kw) => ({ message: { contains: kw, mode: 'insensitive' as const } })),
+            },
+            orderBy: { committedAt: 'desc' },
+            take: 10,
+          });
+        } else {
+          historicalCommits = await prisma.projectCommit.findMany({
+            where: { projectId, branch },
+            orderBy: { committedAt: 'desc' },
+            take: 10,
+          });
+        }
+      }
+    }
+  }
+
   const result = synthesizeAskAnswerPure({
     context,
     dependencyEdges,
     query: trimmedQuery,
+    historicalCommits: historicalCommits.length > 0 ? historicalCommits : undefined,
+    totalCommitsCount,
   });
 
   console.info(

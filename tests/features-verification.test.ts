@@ -26,6 +26,13 @@ import { synthesizeAskAnswerPure } from '../lib/services/ai-query';
 import { getSafeErrorResponse } from '../lib/errors';
 import type { ProjectWorkstationContext } from '../lib/services/project-context';
 import type { FileTreeNode } from '../types';
+import {
+  partitionIntoBatches,
+  resolveGlobalDependencyGraphFromBatches,
+  MAX_FILES_PER_BATCH,
+  ANALYZER_VERSION,
+  type CompactParsedAstSummary,
+} from '../lib/github/analysis';
 import { prisma } from '../lib/prisma';
 
 function makeBaseContext(overrides?: Partial<ProjectWorkstationContext>): ProjectWorkstationContext {
@@ -897,4 +904,407 @@ test('Real MarrowNode codebase Ground Truth (#56, #57, #58, #59): AST parse, Ask
   console.info(
     `[Real Repo Ground Truth] files=${allFiles.length} tsxFiles=${sourceFiles.length} edges=${edges.length} astParseMs=${parseMs} authDirect=${authBlast.directConsumersCount} authTotal=${authBlast.totalAffectedCount}`
   );
+});
+
+// =========================================================================
+// 7. SCALABILITY: UNBOUNDED BATCHED AST, CROSS-BATCH GRAPH & >30 HISTORY TESTS
+// =========================================================================
+
+function generateScalableSyntheticFiles(count: number): Array<{ path: string; code: string }> {
+  const files: Array<{ path: string; code: string }> = [];
+  for (let i = 0; i < count; i++) {
+    if (i === 0) {
+      files.push({
+        path: 'src/a_entry/index.ts',
+        code: `import { lateCoreHelper } from '../z_late/core-helper';\nexport function boot() { return lateCoreHelper(); }\n`,
+      });
+    } else if (i === count - 1) {
+      files.push({
+        path: 'src/z_late/core-helper.ts',
+        code: `export function lateCoreHelper() { return ${count}; }\n`,
+      });
+    } else {
+      const modIdx = String(i).padStart(4, '0');
+      const targetLine = i === 1 ? `import { lateCoreHelper } from '../z_late/core-helper';\n` : '';
+      files.push({
+        path: `src/modules/m_${modIdx}.ts`,
+        code: `${targetLine}export const val_${modIdx} = ${i};\n`,
+      });
+    }
+  }
+  return files;
+}
+
+test('Scalability S1-S3: Small (35), Medium (320 >250 cap), Large (600 & 1000) batched AST + cross-batch global graph resolution', () => {
+  assert.equal(ANALYZER_VERSION, 'v3.0');
+  assert.equal(MAX_FILES_PER_BATCH, 40);
+
+  for (const total of [35, 320, 600, 1000]) {
+    const startMs = Date.now();
+    const synthetic = generateScalableSyntheticFiles(total);
+    const batches = partitionIntoBatches(synthetic, MAX_FILES_PER_BATCH);
+
+    // Verify zero arbitrary ceiling (must cover ALL files, strictly > 250 for 320/600/1000)
+    const flattened = batches.reduce((acc, b) => acc + b.length, 0);
+    assert.equal(flattened, total, `All ${total} files must be batched with zero cap`);
+    assert.equal(batches.length, Math.ceil(total / MAX_FILES_PER_BATCH));
+
+    // PHASE 1: Parse each batch into CompactParsedAstSummary (dropping raw code after parse)
+    const parsedSummaries: CompactParsedAstSummary[] = [];
+    for (const batch of batches) {
+      for (const f of batch) {
+        const ast = parseSourceFileAST(f.path, f.code);
+        parsedSummaries.push({
+          filePath: f.path,
+          loc: ast.loc,
+          imports: ast.imports,
+          reExports: ast.exports
+            .filter((e) => Boolean(e.reExportFrom))
+            .map((e) => ({ name: e.name, line: e.line, reExportFrom: e.reExportFrom })),
+        });
+      }
+    }
+    assert.equal(parsedSummaries.length, total);
+
+    // PHASE 2 & 3: Global Cross-Batch Graph Resolution
+    const allRepoFilePaths = new Set(synthetic.map((f) => f.path));
+    const resolved = resolveGlobalDependencyGraphFromBatches({
+      parsedFiles: parsedSummaries,
+      allRepoFilePaths,
+      tsconfigOptions: parseTsConfig(null),
+      declaredDependencies: [],
+      owner: 'scale',
+      repo: `repo-${total}`,
+      latestCommitSha: 'deadbeef1234',
+      analysisId: `scale-${total}`,
+    });
+
+    const elapsedMs = Date.now() - startMs;
+
+    // Cross-Batch Mandatory Check: Batch 0 ('src/a_entry/index.ts') -> Last Batch ('src/z_late/core-helper.ts')
+    if (total >= 2) {
+      const hasCrossBatchEdge = resolved.dependencyEdges.some(
+        (e) => e.source === 'src/a_entry/index.ts' && e.target === 'src/z_late/core-helper.ts'
+      );
+      assert.equal(
+        hasCrossBatchEdge,
+        true,
+        `Batch 0 must resolve cross-batch import to last batch in ${total}-file run`
+      );
+
+      // Blast radius & PR Check must traverse the cross-batch edge
+      const engine = new DependencyGraphEngine(resolved.dependencyEdges);
+      const impact = engine.calculateBlastRadius('src/z_late/core-helper.ts', 'refactor');
+      assert.ok(
+        impact.directConsumers.some((c) => c.path === 'src/a_entry/index.ts'),
+        `Change Impact on late-batch file must include early-batch caller for ${total} files`
+      );
+
+      const prReport = evaluatePullRequestImpactPure({
+        pr: BASE_PR,
+        files: [
+          {
+            sha: 'abc',
+            filename: 'src/z_late/core-helper.ts',
+            status: 'modified',
+            additions: 3,
+            deletions: 1,
+            changes: 4,
+          },
+        ],
+        analysis: FULL_ANALYSIS,
+        dependencyEdges: resolved.dependencyEdges,
+        knownRepoFiles: Array.from(allRepoFilePaths),
+      });
+      assert.ok(
+        prReport.directAffectedFiles.includes('src/a_entry/index.ts'),
+        `PR Check must propagate late-batch file modification to early-batch consumer (${total} files)`
+      );
+
+      // Ask MarrowNode must find & explain the late-batch file cleanly
+      const ctx = makeBaseContext({
+        fileTree: synthetic.map((s, idx) => ({
+          id: `node-${idx}`,
+          name: s.path.split('/').pop() || s.path,
+          path: s.path,
+          type: 'file',
+        })),
+        summary: {
+          totalFiles: total,
+          topLanguage: 'TypeScript',
+          framework: 'TypeScript',
+          hasReadme: false,
+          readmePreview: null,
+        },
+        coverage: {
+          ...makeBaseContext().coverage!,
+          files: { discovered: total, source: total, parsed: total, failed: 0, ignored: 0, coveragePercent: 100 },
+          documentation: { filesDetected: 0, filesIndexed: 0, docTypes: [], hasReadme: false },
+        },
+      });
+      const askLate = synthesizeAskAnswerPure({
+        context: ctx,
+        dependencyEdges: resolved.dependencyEdges,
+        query: 'Who imports src/z_late/core-helper.ts?',
+      });
+      assert.ok(
+        askLate.fact?.includes('src/z_late/core-helper.ts') &&
+          (askLate.inference?.includes('src/a_entry/index.ts') || askLate.fact?.includes('src/a_entry/index.ts')) &&
+          askLate.citations.some((c) => c.path === 'src/a_entry/index.ts'),
+        `Ask Project must cite both late-batch target and early-batch importer (${total} files)`
+      );
+    }
+
+    console.info(
+      `[Scalability Benchmark] files=${total} batches=${batches.length} resolvedEdges=${resolved.resolvedImportsCount} elapsedMs=${elapsedMs}`
+    );
+  }
+});
+
+test('Scalability H1: Large Git history (>30 commits: 150 & 500 commits) Ask grounding without 30-commit cap', () => {
+  const ctx = makeBaseContext({
+    timeline: [
+      {
+        id: 'ev-1',
+        date: '2026-11-10',
+        year: 2026,
+        month: 'Nov',
+        type: 'feature',
+        title: 'Latest HEAD commit',
+        explanation: 'Latest commit',
+        commitHash: 'aaa001',
+        commitShort: 'aaa001',
+        author: { name: 'Dev', avatar: '', handle: 'dev' },
+        filesAffected: [],
+        evidencePointers: [],
+      },
+    ],
+  });
+
+  // Query commit #31 (previously impossible due to 30-commit ceiling)
+  const ask31 = synthesizeAskAnswerPure({
+    context: ctx,
+    dependencyEdges: [],
+    query: 'What happened in commit #31?',
+    totalCommitsCount: 150,
+    historicalCommits: [
+      {
+        commitSha: 'sha031000000000',
+        shortSha: 'sha0310',
+        message: 'feat(scale): remove 250 file cap cleanly (#31)',
+        authorName: 'Alice',
+        committedAt: new Date('2026-08-14T12:00:00Z'),
+        eventType: 'feature',
+      },
+    ],
+  });
+  assert.ok(ask31.fact?.includes('150 commit(s) indexed'));
+  assert.ok(ask31.fact?.includes('sha0310'));
+  assert.ok(ask31.fact?.includes('remove 250 file cap'));
+
+  // Query 6 months ago across 500 indexed commits
+  const ask6Months = synthesizeAskAnswerPure({
+    context: ctx,
+    dependencyEdges: [],
+    query: 'What changed six months ago?',
+    totalCommitsCount: 500,
+    historicalCommits: [
+      {
+        commitSha: 'sha420000000000',
+        shortSha: 'sha4200',
+        message: 'milestone: initial production launch',
+        authorName: 'Bob',
+        committedAt: new Date('2026-05-12T10:00:00Z'),
+        eventType: 'milestone',
+      },
+    ],
+  });
+  assert.ok(ask6Months.fact?.includes('500 commit(s) indexed'));
+  assert.ok(ask6Months.fact?.includes('sha4200'));
+
+  // Absent topic across 150 commits must NOT hallucinate
+  const askMissing = synthesizeAskAnswerPure({
+    context: ctx,
+    dependencyEdges: [],
+    query: 'Which commit added GraphQL subscriptions?',
+    totalCommitsCount: 150,
+    historicalCommits: [],
+  });
+  assert.ok(askMissing.fact?.includes('None of the 150 indexed commits mention'));
+});
+
+test('Scalability DB: Neon PostgreSQL AnalysisBatch persistence, ProjectCommit >30 deduplication, and AstFileCache reuse', async () => {
+  const suffix = crypto.randomBytes(4).toString('hex');
+  const testUserId = `scale-user-${suffix}`;
+  const testRepoId = `scale-repo-${suffix}`;
+  const testProjectId = `scale-proj-${suffix}`;
+  const testAnalysisId = `scale-ana-${suffix}`;
+
+  try {
+    await prisma.user.create({
+      data: {
+        id: testUserId,
+        supabaseUserId: `sb-${suffix}`,
+        email: `scale-${suffix}@test.local`,
+        displayName: 'Scale Tester',
+      },
+    });
+
+    await prisma.project.create({
+      data: {
+        id: testProjectId,
+        ownerId: testUserId,
+        name: `scale-project-${suffix}`,
+        githubOwner: 'acme',
+        githubRepositoryName: `scale-${suffix}`,
+        defaultBranch: 'main',
+      },
+    });
+
+    await prisma.repository.create({
+      data: {
+        id: testRepoId,
+        projectId: testProjectId,
+        githubRepoId: `gh-${suffix}`,
+        owner: 'acme',
+        name: `scale-${suffix}`,
+        fullName: `acme/scale-${suffix}`,
+        url: `https://github.com/acme/scale-${suffix}`,
+        defaultBranch: 'main',
+        currentCommitSha: 'head123456',
+      },
+    });
+
+    // 1. Persist Analysis with batch progress + per-file partial failure honesty
+    await prisma.analysis.create({
+      data: {
+        id: testAnalysisId,
+        projectId: testProjectId,
+        repositoryId: testRepoId,
+        status: 'RUNNING',
+        analyzerVersion: ANALYZER_VERSION,
+        commitSha: 'head123456',
+        totalFiles: 350,
+        processedFiles: 40,
+        failedFiles: 1,
+        totalSourceFiles: 320,
+        processedSourceFiles: 40,
+        totalBatches: 8,
+        completedBatches: 1,
+        currentBatch: 2,
+        historyStatus: 'PROCESSING',
+        totalCommitsIngested: 100,
+        historyNextPage: 2,
+      },
+    });
+
+    await prisma.analysisBatch.createMany({
+      data: [
+        {
+          analysisId: testAnalysisId,
+          projectId: testProjectId,
+          batchNumber: 0,
+          status: 'COMPLETED',
+          fileCount: 1,
+          processedCount: 1,
+          failedCount: 0,
+          fileManifestJson: [{ path: 'src/a_entry/index.ts' }],
+          parsedFilesJson: [
+            {
+              filePath: 'src/a_entry/index.ts',
+              loc: 3,
+              imports: [{ specifier: '../z_late/core-helper', importedNames: ['lateCoreHelper'], isTypeOnly: false, isDynamic: false, line: 1 }],
+              reExports: [],
+            },
+          ],
+          startedAt: new Date(),
+          completedAt: new Date(),
+        },
+        {
+          analysisId: testAnalysisId,
+          projectId: testProjectId,
+          batchNumber: 1,
+          status: 'PENDING',
+          fileCount: 1,
+          fileManifestJson: [{ path: 'src/z_late/core-helper.ts' }],
+        },
+      ],
+    });
+
+    // Simulate resume query: only Batch 1 should be pending
+    const nextPending = await prisma.analysisBatch.findFirst({
+      where: { analysisId: testAnalysisId, status: { in: ['PENDING', 'FAILED'] } },
+      orderBy: { batchNumber: 'asc' },
+    });
+    assert.equal(nextPending?.batchNumber, 1);
+
+    // 2. Persist 150 commits (exceeding old 30 limit) & verify deduplication on re-insert
+    const commitRows = Array.from({ length: 150 }, (_, idx) => {
+      const sha = `sha_${suffix}_${String(idx + 1).padStart(4, '0')}`;
+      return {
+        projectId: testProjectId,
+        repositoryId: testRepoId,
+        branch: 'main',
+        commitSha: sha,
+        shortSha: sha.slice(0, 7),
+        message: `Commit #${idx + 1} synthetic message`,
+        authorName: 'Scale Bot',
+        committedAt: new Date(Date.UTC(2026, 10, 12, 12, 0, 0) - idx * 3600 * 1000),
+        eventType: 'feature',
+      };
+    });
+
+    const firstInsert = await prisma.projectCommit.createMany({
+      data: commitRows,
+      skipDuplicates: true,
+    });
+    assert.equal(firstInsert.count, 150);
+
+    const dupInsert = await prisma.projectCommit.createMany({
+      data: commitRows.slice(0, 50),
+      skipDuplicates: true,
+    });
+    assert.equal(dupInsert.count, 0, 'Duplicate commits must be safely ignored by unique index');
+
+    // Verify commit #31 is stored and retrievable cleanly from Neon DB
+    const commit31 = await prisma.projectCommit.findMany({
+      where: { projectId: testProjectId, branch: 'main' },
+      orderBy: { committedAt: 'desc' },
+      skip: 30,
+      take: 1,
+    });
+    assert.equal(commit31.length, 1);
+    assert.equal(commit31[0].message, 'Commit #31 synthetic message');
+
+    // 3. Persist AstFileCache entry & verify incremental lookup hit by (repositoryId, filePath, blobSha, analyzerVersion)
+    await prisma.astFileCache.create({
+      data: {
+        repositoryId: testRepoId,
+        filePath: 'src/a_entry/index.ts',
+        blobSha: 'blob_aaa111',
+        analyzerVersion: ANALYZER_VERSION,
+        loc: 3,
+        parsedAstJson: {
+          imports: [{ specifier: '../z_late/core-helper', importedNames: ['lateCoreHelper'], isTypeOnly: false, isDynamic: false, line: 1 }],
+          reExports: [],
+        },
+      },
+    });
+
+    const cachedHit = await prisma.astFileCache.findUnique({
+      where: {
+        repositoryId_filePath_blobSha_analyzerVersion: {
+          repositoryId: testRepoId,
+          filePath: 'src/a_entry/index.ts',
+          blobSha: 'blob_aaa111',
+          analyzerVersion: ANALYZER_VERSION,
+        },
+      },
+    });
+    assert.ok(cachedHit, 'AstFileCache hit must match by (repositoryId, filePath, blobSha, analyzerVersion)');
+    assert.equal(cachedHit?.loc, 3);
+  } finally {
+    // Multi-tenant cleanup
+    await prisma.user.delete({ where: { id: testUserId } }).catch(() => {});
+  }
 });

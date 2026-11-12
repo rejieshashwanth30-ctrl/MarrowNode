@@ -1,9 +1,15 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth, getOrCreateCurrentProfile } from '@/lib/auth';
 import { getUserProject } from '@/lib/services/projects';
 import { createAnalysisRun } from '@/lib/services/analysis';
 import { getGitHubTokenForCurrentUser, githubCache } from '@/lib/github/client';
-import { executeDeterministicAnalysis } from '@/lib/github/analysis';
+import {
+  ANALYZER_VERSION,
+  formatAnalysisProgress,
+  initializeResumableAnalysis,
+  processAnalysisStep,
+  STEP_TIME_BUDGET_MS,
+} from '@/lib/github/analysis';
 import { getSafeErrorResponse } from '@/lib/errors';
 
 export const dynamic = 'force-dynamic';
@@ -11,7 +17,9 @@ export const dynamic = 'force-dynamic';
 /**
  * POST /api/projects/[id]/analyze
  *
- * Initiates the deterministic codebase analysis pipeline for an owned project.
+ * Initializes scalable batch-based analysis + paginated Git history ingestion,
+ * executes the initial step within a safe serverless time budget, and returns
+ * either the COMPLETED snapshot or live RUNNING progress for resumable stepping.
  */
 export async function POST(
   _request: NextRequest,
@@ -19,12 +27,12 @@ export async function POST(
 ) {
   try {
     await requireAuth();
+    const profile = await getOrCreateCurrentProfile();
     const projectId = params.id;
 
-    // Validate project ownership strictly
     const project = await getUserProject(projectId);
 
-    if (!project.githubOwner || !project.githubRepositoryName) {
+    if (!project.repository || !project.githubOwner || !project.githubRepositoryName) {
       return NextResponse.json(
         { error: 'Project does not have a linked GitHub repository to analyze.' },
         { status: 400 }
@@ -39,46 +47,59 @@ export async function POST(
       );
     }
 
-    // Prevent concurrent duplicate analysis runs
+    // Resume existing active run if triggered recently cleanly instead of spawning duplicates
     const activeRun = project.analyses.find(
       (a) =>
-        a.status === 'RUNNING' &&
-        Date.now() - new Date(a.createdAt).getTime() < 2 * 60 * 1000
+        (a.status === 'RUNNING' || a.status === 'QUEUED') &&
+        Date.now() - new Date(a.updatedAt).getTime() < 90 * 1000
     );
     if (activeRun) {
       return NextResponse.json({
         success: true,
         alreadyRunning: true,
+        completed: false,
         analysisId: activeRun.id,
-        status: 'RUNNING',
+        status: activeRun.status,
+        snapshot: formatAnalysisProgress(activeRun),
       });
     }
 
     githubCache.invalidateRepo(project.githubOwner, project.githubRepositoryName);
 
     const analysis = await createAnalysisRun(projectId, {
-      status: 'RUNNING',
-      analyzerVersion: 'v2.0',
+      status: 'QUEUED',
+      analyzerVersion: ANALYZER_VERSION,
       startedAt: new Date(),
     });
 
     console.info(
-      `[MarrowNode Analyze] started projectId=${projectId} analysisId=${analysis.id}`
+      `[MarrowNode Analyze] queued projectId=${projectId} analysisId=${analysis.id}`
     );
 
-    const result = await executeDeterministicAnalysis({
+    await initializeResumableAnalysis({
       token,
+      userId: profile.id,
       projectId,
+      repositoryId: project.repository.id,
       analysisId: analysis.id,
       owner: project.githubOwner,
       repo: project.githubRepositoryName,
     });
 
+    const stepResult = await processAnalysisStep({
+      token,
+      userId: profile.id,
+      projectId,
+      analysisId: analysis.id,
+      timeBudgetMs: STEP_TIME_BUDGET_MS,
+    });
+
     return NextResponse.json({
       success: true,
       analysisId: analysis.id,
-      status: 'COMPLETED',
-      result,
+      completed: stepResult.completed,
+      status: stepResult.snapshot.status,
+      snapshot: stepResult.snapshot,
     });
   } catch (error: any) {
     const safe = getSafeErrorResponse(

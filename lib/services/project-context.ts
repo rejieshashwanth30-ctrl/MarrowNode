@@ -94,6 +94,17 @@ export interface ProjectWorkstationContext {
     completedAt: Date | null;
     errorMessage: string | null;
   } | null;
+  historyTotalCount?: number;
+  activeProgress?: {
+    analysisId: string;
+    status: string;
+    totalSourceFiles: number;
+    processedSourceFiles: number;
+    totalBatches: number;
+    completedBatches: number;
+    totalCommitsIngested: number;
+    historyStatus: string;
+  } | null;
   fileTree: FileTreeNode[];
   nodes: ArchitectureNode[];
   edges: ArchitectureEdge[];
@@ -246,11 +257,27 @@ export async function getProjectWorkstationContext(
     throw new AuthError('Project not found or access denied', 404);
   }
 
-  // Prefer the latest COMPLETED snapshot as source of truth so failed/in-progress reruns never blind the workspace
+  // Prefer the latest COMPLETED or PARTIALLY_COMPLETED snapshot so in-progress/failed reruns never blind the workspace
   const rawLatestAnalysis = project.analyses[0] || null;
-  const completedAnalysis = project.analyses.find((a) => a.status === 'COMPLETED') || null;
+  const completedAnalysis =
+    project.analyses.find(
+      (a) => a.status === 'COMPLETED' || a.status === 'PARTIALLY_COMPLETED'
+    ) || null;
   const latestAnalysis = completedAnalysis || rawLatestAnalysis;
   const evidences = project.evidences || [];
+
+  // Query indexed ProjectCommit history cleanly (page 1 = latest 50 + exact total count)
+  const targetBranch = latestAnalysis?.branch || project.defaultBranch || 'main';
+  const [dbCommitCount, dbRecentCommits] = await Promise.all([
+    prisma.projectCommit.count({ where: { projectId, branch: targetBranch } }).catch(() => 0),
+    prisma.projectCommit
+      .findMany({
+        where: { projectId, branch: targetBranch },
+        orderBy: { committedAt: 'desc' },
+        take: 50,
+      })
+      .catch(() => []),
+  ]);
 
   // Parse evidence records into workstation objects
   let fileTree: FileTreeNode[] = [];
@@ -588,9 +615,13 @@ export async function getProjectWorkstationContext(
   if (!latestAnalysis) {
     freshness = 'STALE';
     freshnessMessage = 'Repository has not been analyzed yet.';
-  } else if (rawLatestAnalysis?.status === 'RUNNING' || rawLatestAnalysis?.status === 'PENDING') {
+  } else if (
+    rawLatestAnalysis?.status === 'RUNNING' ||
+    rawLatestAnalysis?.status === 'PENDING' ||
+    rawLatestAnalysis?.status === 'QUEUED'
+  ) {
     freshness = 'ANALYZING';
-    freshnessMessage = 'Repository analysis is currently in progress.';
+    freshnessMessage = `Analyzing repository (${rawLatestAnalysis.processedSourceFiles ?? 0}/${rawLatestAnalysis.totalSourceFiles ?? 0} source files).`;
   } else if (!completedAnalysis && rawLatestAnalysis?.status === 'FAILED') {
     freshness = 'FAILED';
     freshnessMessage = 'The latest analysis attempt failed.';
@@ -613,15 +644,54 @@ export async function getProjectWorkstationContext(
     freshness = 'UNVERIFIED';
     freshnessMessage = 'Repository freshness could not be verified.';
   } else if (
-    computedCoverage &&
-    computedCoverage.files.coveragePercent < 100 &&
-    computedCoverage.files.source > computedCoverage.files.parsed
+    latestAnalysis.status === 'PARTIALLY_COMPLETED' ||
+    (computedCoverage &&
+      computedCoverage.files.coveragePercent < 100 &&
+      computedCoverage.files.source > computedCoverage.files.parsed)
   ) {
     freshness = 'PARTIAL';
-    freshnessMessage = `Partially analyzed: ${computedCoverage.files.parsed}/${computedCoverage.files.source} source files inspected.`;
+    freshnessMessage = `Partially analyzed: ${computedCoverage?.files?.parsed ?? 0}/${computedCoverage?.files?.source ?? 0} source files inspected.`;
   } else {
     freshness = 'CURRENT';
   }
+
+  // Prefer paginated ProjectCommit rows when ingested so large histories stay bounded in context
+  if (dbRecentCommits.length > 0) {
+    timeline = dbRecentCommits.map((c) => ({
+      id: `ev-${c.shortSha}`,
+      date: c.committedAt.toISOString().split('T')[0],
+      year: c.committedAt.getFullYear(),
+      month: c.committedAt.toLocaleString('default', { month: 'short' }),
+      type: c.eventType as any,
+      title: c.message,
+      explanation: `Observed change in commit ${c.shortSha} by ${c.authorName}: ${c.message}`,
+      architecturalImpact: c.body ? `Commit body documentation: ${c.body}` : undefined,
+      commitHash: c.commitSha,
+      commitShort: c.shortSha,
+      author: {
+        name: c.authorName,
+        avatar: '',
+        handle: c.authorName.toLowerCase().replace(/\s+/g, ''),
+      },
+      filesAffected: [],
+      evidencePointers: [],
+    }));
+  }
+
+  const activeProgress =
+    rawLatestAnalysis &&
+    (rawLatestAnalysis.status === 'RUNNING' || rawLatestAnalysis.status === 'QUEUED')
+      ? {
+          analysisId: rawLatestAnalysis.id,
+          status: rawLatestAnalysis.status,
+          totalSourceFiles: rawLatestAnalysis.totalSourceFiles ?? 0,
+          processedSourceFiles: rawLatestAnalysis.processedSourceFiles ?? 0,
+          totalBatches: rawLatestAnalysis.totalBatches ?? 0,
+          completedBatches: rawLatestAnalysis.completedBatches ?? 0,
+          totalCommitsIngested: rawLatestAnalysis.totalCommitsIngested ?? 0,
+          historyStatus: rawLatestAnalysis.historyStatus || 'PENDING',
+        }
+      : null;
 
   const resolvedContext: ProjectWorkstationContext = {
     project: {
@@ -670,6 +740,8 @@ export async function getProjectWorkstationContext(
           errorMessage: latestAnalysis.errorMessage,
         }
       : null,
+    historyTotalCount: dbCommitCount > 0 ? dbCommitCount : timeline.length,
+    activeProgress,
     fileTree,
     nodes,
     edges,

@@ -44,7 +44,7 @@ export async function createAnalysisRun(projectId: string, input?: CreateAnalysi
     data: {
       projectId,
       status: input?.status || 'PENDING',
-      analyzerVersion: input?.analyzerVersion || 'v2.0',
+      analyzerVersion: input?.analyzerVersion || 'v3.0',
       startedAt: input?.startedAt || new Date(),
       completedAt: input?.completedAt,
       filesAnalyzed: input?.filesAnalyzed ?? 0,
