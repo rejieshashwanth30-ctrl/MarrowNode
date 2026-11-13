@@ -536,7 +536,7 @@ export default function LandingPage() {
             Rejiesh Ashwanth V
           </h2>
           <p className="text-xs sm:text-sm text-text-secondary dark:text-[#A7AFA9] font-sans">
-            AI &amp; ML Student · Sri Krishna College of Engineering and Technology (SKCET)
+            Co-Founder of ADYK
           </p>
         </div>
       </section>

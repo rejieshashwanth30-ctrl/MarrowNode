@@ -11,3 +11,4 @@ export default function robots(): MetadataRoute.Robots {
     sitemap: `${CANONICAL_PUBLIC_ORIGIN}/sitemap.xml`,
   };
 }
+
