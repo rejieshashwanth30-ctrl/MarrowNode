@@ -127,7 +127,7 @@ export function classifyQueryIntent(query: string): QueryIntent {
   }
 
   if (
-    /\b(database|db|prisma|neon|postgres|postgresql|mysql|sqlite|mongodb|mongoose|redis|drizzle|schema|sql|orm)\b/.test(
+    /\b(database|db|prisma|neon|postgres|postgresql|mysql|sqlite|mongodb|mongoose|redis|drizzle|schema|sql|orm|datastore|persistence|data store)\b/.test(
       q
     )
   ) {

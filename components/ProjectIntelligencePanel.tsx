@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
-import { Search, Terminal, ShieldCheck, FileCode, Loader2 } from 'lucide-react';
+import { Search, Terminal, ShieldCheck, FileCode, Loader2, AlertCircle, RotateCcw } from 'lucide-react';
 
 interface ProjectIntelligencePanelProps {
   projectId?: string;
@@ -30,9 +30,10 @@ export function ProjectIntelligencePanel({
     setLoading(false);
   }, [projectId]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!query.trim() || !projectId || loading) return;
+  const handleSubmit = async (e?: React.FormEvent, customQuery?: string) => {
+    if (e) e.preventDefault();
+    const q = (customQuery || query).trim();
+    if (!q || !projectId || loading) return;
 
     setLoading(true);
     setResult(null);
@@ -41,26 +42,53 @@ export function ProjectIntelligencePanel({
       const res = await fetch(`/api/projects/${projectId}/ask`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: query.trim() }),
+        body: JSON.stringify({ query: q }),
       });
 
-      const data = await res.json();
-      if (res.ok) {
+      let data: any = null;
+      try {
+        data = await res.json();
+      } catch {
+        // Non-JSON response
+      }
+
+      if (res.ok && data?.result) {
         setResult(data.result);
       } else {
+        let errorMsg = data?.error;
+        if (!errorMsg) {
+          if (res.status === 401) {
+            errorMsg = 'GitHub or MarrowNode authentication expired. Please sign in or reconnect.';
+          } else if (res.status === 404) {
+            errorMsg = 'Project snapshot not found. Please select or analyze a repository first.';
+          } else if (res.status === 504 || res.status === 408) {
+            errorMsg = 'Request timed out while analyzing repository evidence. Please try again.';
+          } else {
+            errorMsg = `Server error (${res.status}). Please try again.`;
+          }
+        }
         setResult({
           fact: null,
           inference: null,
-          unknown: data.error || 'Failed to query codebase context.',
+          unknown: errorMsg,
           citations: [],
+          isError: true,
+          failedQuery: q,
         });
       }
     } catch (_) {
+      const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
+      const errorMsg = isOffline
+        ? 'No internet connection detected. Please check your network and try again.'
+        : 'Unable to reach MarrowNode right now. Please check your connection and try again.';
+
       setResult({
         fact: null,
         inference: null,
-        unknown: 'Unable to reach MarrowNode right now. Please try again.',
+        unknown: errorMsg,
         citations: [],
+        isError: true,
+        failedQuery: q,
       });
     } finally {
       setLoading(false);
@@ -127,7 +155,7 @@ export function ProjectIntelligencePanel({
 
       <CardContent className="p-3 sm:p-5 space-y-3 sm:space-y-4">
         <form onSubmit={handleSubmit}>
-          <div className="flex flex-col min-[480px]:flex-row gap-2 sm:gap-2.5">
+          <div className="flex flex-row items-center gap-2 sm:gap-2.5">
             <div className="relative flex-1 min-w-0 flex items-center">
               <Search className="w-4 h-4 text-text-muted absolute left-3.5 pointer-events-none" />
               <input
@@ -137,25 +165,35 @@ export function ProjectIntelligencePanel({
                 disabled={loading}
                 aria-label="Ask anything about this project"
                 placeholder="Ask about your project… (e.g. How does login work?)"
-                className="w-full h-11 sm:h-10 pl-9 pr-3.5 bg-surface border border-border rounded-lg text-xs font-sans text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-forest focus:border-forest transition-colors dark:bg-[#1A221D] dark:border-[#324237] dark:text-[#F2F4F0] dark:placeholder:text-[#98A49A]"
+                className="w-full h-12 pl-10 pr-4 bg-surface border border-border rounded-xl text-base sm:text-sm font-sans text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-forest focus:border-forest transition-all dark:bg-[#1A221D] dark:border-[#324237] dark:text-[#F2F4F0] dark:placeholder:text-[#98A49A] shadow-2xs"
               />
             </div>
             <Button
               type="submit"
               variant="primary"
-              size="sm"
               disabled={!query.trim() || loading}
-              className="h-11 sm:h-10 w-full min-[480px]:w-auto rounded-lg text-xs font-sans font-medium px-5 gap-1.5 shrink-0 bg-forest hover:bg-forest/90 text-white dark:bg-forest dark:hover:bg-forest/90 border border-forest/20 shadow-2xs"
+              className="h-12 px-4 sm:px-6 rounded-xl text-sm font-sans font-medium shrink-0 bg-forest hover:bg-forest/90 text-white dark:bg-forest dark:hover:bg-forest/90 border border-forest/20 shadow-sm min-w-[72px] sm:min-w-[88px] flex items-center justify-center gap-2 active:scale-[0.98] transition-all"
             >
-              {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <span>Ask</span>}
+              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <span>Ask</span>}
             </Button>
           </div>
         </form>
 
         {result && (
-          <div className="p-3.5 sm:p-4 rounded-lg bg-surface-subtle dark:bg-[#131915] border border-border dark:border-[#2C3930] space-y-3 text-xs leading-relaxed font-sans animate-in fade-in-50 min-w-0 break-words">
+          <div className={`p-3.5 sm:p-4 rounded-xl border space-y-3 text-xs sm:text-[13px] leading-relaxed font-sans animate-in fade-in-50 min-w-0 break-words shadow-2xs ${
+            result.isError 
+              ? 'bg-copper/5 border-copper/30 dark:bg-[#231815] dark:border-copper/40' 
+              : 'bg-surface-subtle dark:bg-[#131915] border-border dark:border-[#2C3930]'
+          }`}>
+            {result.isError && (
+              <div className="flex items-center gap-2 text-copper dark:text-[#E69E7B] font-semibold text-xs">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span className="uppercase tracking-wider text-[10px]">Unable to reach MarrowNode</span>
+              </div>
+            )}
+
             {result.fact && (
-              <div className="p-2.5 rounded bg-forest/10 border border-forest/20 space-y-1">
+              <div className="p-2.5 rounded-lg bg-forest/10 border border-forest/20 space-y-1">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-forest dark:text-[#9AC6A7] block">
                   CONFIRMED FROM YOUR PROJECT
                 </span>
@@ -164,7 +202,7 @@ export function ProjectIntelligencePanel({
             )}
 
             {result.inference && (
-              <div className="p-2.5 rounded bg-copper/10 border border-copper/20 space-y-1">
+              <div className="p-2.5 rounded-lg bg-copper/10 border border-copper/20 space-y-1">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-copper dark:text-[#E69E7B] block">
                   BASED ON PROJECT STRUCTURE
                 </span>
@@ -173,11 +211,31 @@ export function ProjectIntelligencePanel({
             )}
 
             {result.unknown && (
-              <div className="p-2.5 rounded bg-surface border border-border dark:bg-[#1A221D] dark:border-[#2E3C33] text-text-secondary dark:text-[#C6CDC7] space-y-1">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-text-muted block">
-                  NOT FOUND IN THE PROJECT
-                </span>
+              <div className={`p-2.5 rounded-lg border space-y-1 ${
+                result.isError 
+                  ? 'bg-transparent border-transparent text-text-primary dark:text-[#F2F4F0] p-0' 
+                  : 'bg-surface border-border dark:bg-[#1A221D] dark:border-[#2E3C33] text-text-secondary dark:text-[#C6CDC7]'
+              }`}>
+                {!result.isError && (
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-text-muted block">
+                    NOT FOUND IN THE PROJECT
+                  </span>
+                )}
                 <span className="break-words block">{result.unknown}</span>
+              </div>
+            )}
+
+            {result.isError && result.failedQuery && (
+              <div className="pt-1 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleSubmit(undefined, result.failedQuery)}
+                  disabled={loading}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-surface hover:bg-surface-subtle border border-border dark:bg-[#1E2721] dark:border-[#324237] text-text-primary dark:text-[#EEF2ED] transition-colors cursor-pointer active:scale-95"
+                >
+                  <RotateCcw className="w-3.5 h-3.5 text-forest dark:text-[#9AC6A7]" />
+                  <span>Retry</span>
+                </button>
               </div>
             )}
 

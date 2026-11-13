@@ -13,19 +13,23 @@ export async function middleware(request: NextRequest) {
   const host = request.headers.get('x-forwarded-host') || request.headers.get('host') || '';
   const cleanHost = host.split(',')[0].trim().toLowerCase();
 
-  // If request hits old vercel domain or non-www apex domain on GET/HEAD, redirect to canonical production origin
+  const isApiRoute = request.nextUrl.pathname.startsWith('/api/');
+  const isGetOrHead = request.method === 'GET' || request.method === 'HEAD';
+
+  // Enforce canonical production domain on top-level page navigations (GET/HEAD).
+  // NEVER 308-redirect API requests (/api/*) across domains to avoid dropping POST payloads
+  // or triggering WebKit/Safari cross-origin fetch CORS rejections.
   if (
+    !isApiRoute &&
+    isGetOrHead &&
     cleanHost &&
     !cleanHost.includes('localhost') &&
     !cleanHost.includes('127.0.0.1') &&
     cleanHost !== CANONICAL_HOST &&
     (cleanHost.endsWith('.vercel.app') || cleanHost === 'marrownode.online')
   ) {
-    // Preserve POST webhooks without 308 redirecting to avoid payload drop by webhook callers
-    if (!request.nextUrl.pathname.startsWith('/api/github/webhooks')) {
-      const canonicalUrl = new URL(request.nextUrl.pathname + request.nextUrl.search, 'https://www.marrownode.online');
-      return NextResponse.redirect(canonicalUrl, 308);
-    }
+    const canonicalUrl = new URL(request.nextUrl.pathname + request.nextUrl.search, 'https://www.marrownode.online');
+    return NextResponse.redirect(canonicalUrl, 308);
   }
 
   // 2. Session refresh
