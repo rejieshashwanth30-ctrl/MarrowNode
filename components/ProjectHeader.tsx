@@ -33,7 +33,7 @@ interface ProjectHeaderProps {
     analysisStatus?: string;
     lastAnalyzedAt?: string | Date | null;
   } | null;
-  freshness?: 'CURRENT' | 'STALE' | 'ANALYZING' | 'PARTIAL' | 'FAILED' | 'UNVERIFIED';
+  freshness?: 'CURRENT' | 'STALE' | 'ANALYZING' | 'PARTIAL' | 'FAILED' | 'UNVERIFIED' | 'SYNC_FAILED';
   onRefresh?: () => void;
   isRefreshing?: boolean;
   onAnalyze?: () => void;
@@ -96,8 +96,12 @@ export function ProjectHeader({
 
   const statusLabel = isAnalyzing
     ? 'Analyzing...'
+    : isRefreshing
+    ? 'Syncing repository...'
     : project.analysisStatus === 'COMPLETED'
-    ? 'Analysis complete'
+    ? freshness === 'CURRENT'
+      ? 'Analysis up to date'
+      : 'Analysis complete'
     : project.analysisStatus === 'PARTIALLY_COMPLETED'
     ? 'Partially analyzed'
     : project.analysisStatus === 'FAILED'
@@ -150,9 +154,20 @@ export function ProjectHeader({
                   variant="copper"
                   size="sm"
                   className="font-sans font-medium text-[10px]"
-                  title="Repository has changed since this analysis"
+                  title="Repository has changed since this analysis (newer commit available on GitHub)"
                 >
-                  Outdated — Sync needed
+                  Changes detected
+                </Badge>
+              )}
+
+              {freshness === 'SYNC_FAILED' && (
+                <Badge
+                  variant="copper"
+                  size="sm"
+                  className="font-sans font-medium text-[10px]"
+                  title="Synchronization failed; showing last successfully analyzed version"
+                >
+                  Sync failed (showing last good analysis)
                 </Badge>
               )}
 

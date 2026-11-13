@@ -424,9 +424,359 @@ export async function fetchRepoCommits(
   return res.commits;
 }
 
+export type RepositoryHeadProviderStatus =
+  | 'VERIFIED'
+  | 'PUBLIC_VERIFIED'
+  | 'TOKEN_EXPIRED'
+  | 'PERMISSION_DENIED'
+  | 'REPOSITORY_NOT_FOUND'
+  | 'BRANCH_NOT_FOUND'
+  | 'RATE_LIMITED'
+  | 'TIMEOUT'
+  | 'GITHUB_UNAVAILABLE'
+  | 'NO_TOKEN'
+  | 'UNKNOWN_ERROR';
+
+export interface RepositoryHeadResult {
+  verified: boolean;
+  repositoryId?: string;
+  projectId?: string;
+  owner: string;
+  name: string;
+  branch: string;
+  currentHeadSha: string | null;
+  verifiedAt: string;
+  providerStatus: RepositoryHeadProviderStatus;
+  statusMessage: string;
+  tokenValid: boolean;
+  isPublicFallback: boolean;
+  rateLimitRemaining: number | null;
+  latencyMs: number;
+}
+
+export interface GetCurrentRepositoryHeadParams {
+  token: string | null;
+  owner: string;
+  repo: string;
+  branch?: string | null;
+  userScope?: string;
+  repositoryId?: string;
+  projectId?: string;
+  analyzedCommitSha?: string | null;
+  bypassCache?: boolean;
+}
+
 /**
- * Fast, timeout-bounded live GitHub HEAD verification for stale-analysis detection.
- * Caches briefly (30s) per user/repo/branch so navigation stays immediate while detecting upstream pushes.
+ * Canonical Server-Side Service: getCurrentRepositoryHead
+ *
+ * Responsibilities:
+ * 1. Resolves canonical repository identity: owner + repo + branch.
+ * 2. Enforces bounded 4500ms timeout with AbortController so Next.js requests never hang.
+ * 3. Checks GitHub with user OAuth token if available.
+ * 4. On 401 Bad credentials, asynchronously flags connectionStatus = 'token_expired' in Neon DB,
+ *    and falls back to unauthenticated public verification so public repos never show false unknown freshness.
+ * 5. Provides truthful providerStatus, error categorization, rate-limit information, and structured audit logs.
+ * 6. Scopes caching strictly by userScope + owner + repo + branch.
+ */
+export async function getCurrentRepositoryHead(
+  params: GetCurrentRepositoryHeadParams
+): Promise<RepositoryHeadResult> {
+  const owner = params.owner.trim();
+  const repo = params.repo.trim();
+  const branch = params.branch?.trim() || 'main';
+  const userScope = params.userScope || 'default';
+  const startMs = Date.now();
+
+  const cacheKey = `${owner.toLowerCase()}/${repo.toLowerCase()}:u:${userScope}:head:${branch}`;
+  if (!params.bypassCache) {
+    const cached = githubCache.get<RepositoryHeadResult>(cacheKey);
+    if (cached) {
+      return cached.data;
+    }
+  }
+
+  const baseHeaders: Record<string, string> = {
+    Accept: 'application/vnd.github+json',
+    'X-GitHub-Api-Version': '2022-11-28',
+    'User-Agent': 'MarrowNode-Developer-Intelligence',
+  };
+
+  const endpoint = `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/commits?sha=${encodeURIComponent(branch)}&per_page=1`;
+  const url = `https://api.github.com${endpoint}`;
+
+  const executeFetch = async (
+    withToken: boolean
+  ): Promise<{ status: number; data: any; headers: Headers }> => {
+    const controller = new AbortController();
+    const timeoutTimer = setTimeout(() => controller.abort(), 4500);
+    try {
+      const headers: Record<string, string> = { ...baseHeaders };
+      if (withToken && params.token) {
+        headers.Authorization = `Bearer ${params.token}`;
+      }
+      const res = await fetch(url, {
+        method: 'GET',
+        headers,
+        signal: controller.signal,
+      });
+      const data = await res.json().catch(() => null);
+      return { status: res.status, data, headers: res.headers };
+    } finally {
+      clearTimeout(timeoutTimer);
+    }
+  };
+
+  try {
+    let response: { status: number; data: any; headers: Headers } | null = null;
+    let tokenUsed = Boolean(params.token);
+
+    if (params.token) {
+      response = await executeFetch(true);
+    }
+
+    // 1. Success with user token
+    if (response && response.status === 200 && Array.isArray(response.data) && response.data.length > 0) {
+      const currentHeadSha = response.data[0]?.sha || null;
+      const rateLimitRemaining = response.headers.get('x-ratelimit-remaining')
+        ? Number(response.headers.get('x-ratelimit-remaining'))
+        : null;
+
+      const result: RepositoryHeadResult = {
+        verified: Boolean(currentHeadSha),
+        repositoryId: params.repositoryId,
+        projectId: params.projectId,
+        owner,
+        name: repo,
+        branch,
+        currentHeadSha,
+        verifiedAt: new Date().toISOString(),
+        providerStatus: 'VERIFIED',
+        statusMessage: 'GitHub branch HEAD verified successfully.',
+        tokenValid: true,
+        isPublicFallback: false,
+        rateLimitRemaining,
+        latencyMs: Date.now() - startMs,
+      };
+
+      console.info(
+        `[MarrowNode Freshness] Head verified: user=${userScope} repo=${owner}/${repo} branch=${branch} sha=${currentHeadSha?.slice(0, 7)} durationMs=${result.latencyMs}`
+      );
+      githubCache.set(cacheKey, result, 20 * 1000);
+      return result;
+    }
+
+    // 2. Token rejected / expired (401 Bad credentials) -> Fallback to unauthenticated public verification
+    if (response && response.status === 401) {
+      console.warn(
+        `[MarrowNode Freshness] Token rejected (401 Bad credentials): user=${userScope} repo=${owner}/${repo} branch=${branch}`
+      );
+
+      // Asynchronously mark token as expired in DB
+      if (userScope !== 'default') {
+        prisma.gitHubConnection
+          .updateMany({
+            where: { userId: userScope },
+            data: { connectionStatus: 'token_expired' },
+          })
+          .catch(() => {});
+      }
+
+      // Try public unauthenticated request
+      try {
+        const publicRes = await executeFetch(false);
+        if (publicRes.status === 200 && Array.isArray(publicRes.data) && publicRes.data.length > 0) {
+          const currentHeadSha = publicRes.data[0]?.sha || null;
+          const rateLimitRemaining = publicRes.headers.get('x-ratelimit-remaining')
+            ? Number(publicRes.headers.get('x-ratelimit-remaining'))
+            : null;
+
+          const result: RepositoryHeadResult = {
+            verified: Boolean(currentHeadSha),
+            repositoryId: params.repositoryId,
+            projectId: params.projectId,
+            owner,
+            name: repo,
+            branch,
+            currentHeadSha,
+            verifiedAt: new Date().toISOString(),
+            providerStatus: 'PUBLIC_VERIFIED',
+            statusMessage: 'Verified via public repository access; GitHub OAuth token is expired and needs reconnect.',
+            tokenValid: false,
+            isPublicFallback: true,
+            rateLimitRemaining,
+            latencyMs: Date.now() - startMs,
+          };
+
+          console.info(
+            `[MarrowNode Freshness] Public HEAD fallback succeeded: repo=${owner}/${repo} branch=${branch} sha=${currentHeadSha?.slice(0, 7)}`
+          );
+          githubCache.set(cacheKey, result, 20 * 1000);
+          return result;
+        }
+      } catch (_) {
+        // Fall through to TOKEN_EXPIRED if public check fails
+      }
+
+      const result: RepositoryHeadResult = {
+        verified: false,
+        repositoryId: params.repositoryId,
+        projectId: params.projectId,
+        owner,
+        name: repo,
+        branch,
+        currentHeadSha: null,
+        verifiedAt: new Date().toISOString(),
+        providerStatus: 'TOKEN_EXPIRED',
+        statusMessage: 'GitHub authentication expired or token revoked. Please reconnect GitHub.',
+        tokenValid: false,
+        isPublicFallback: false,
+        rateLimitRemaining: null,
+        latencyMs: Date.now() - startMs,
+      };
+      return result;
+    }
+
+    // 3. No token provided upfront -> Try public unauthenticated request
+    if (!params.token) {
+      try {
+        const publicRes = await executeFetch(false);
+        if (publicRes.status === 200 && Array.isArray(publicRes.data) && publicRes.data.length > 0) {
+          const currentHeadSha = publicRes.data[0]?.sha || null;
+          const rateLimitRemaining = publicRes.headers.get('x-ratelimit-remaining')
+            ? Number(publicRes.headers.get('x-ratelimit-remaining'))
+            : null;
+
+          const result: RepositoryHeadResult = {
+            verified: Boolean(currentHeadSha),
+            repositoryId: params.repositoryId,
+            projectId: params.projectId,
+            owner,
+            name: repo,
+            branch,
+            currentHeadSha,
+            verifiedAt: new Date().toISOString(),
+            providerStatus: 'PUBLIC_VERIFIED',
+            statusMessage: 'Verified via public repository access.',
+            tokenValid: false,
+            isPublicFallback: true,
+            rateLimitRemaining,
+            latencyMs: Date.now() - startMs,
+          };
+          githubCache.set(cacheKey, result, 20 * 1000);
+          return result;
+        }
+      } catch (_) {}
+
+      return {
+        verified: false,
+        repositoryId: params.repositoryId,
+        projectId: params.projectId,
+        owner,
+        name: repo,
+        branch,
+        currentHeadSha: null,
+        verifiedAt: new Date().toISOString(),
+        providerStatus: 'NO_TOKEN',
+        statusMessage: 'No GitHub token available. Connect GitHub to verify repository.',
+        tokenValid: false,
+        isPublicFallback: false,
+        rateLimitRemaining: null,
+        latencyMs: Date.now() - startMs,
+      };
+    }
+
+    // 4. Handle other HTTP status codes (404, 403, 429, 5xx)
+    const status = response ? response.status : 500;
+    const rateLimitRemaining = response?.headers.get('x-ratelimit-remaining')
+      ? Number(response.headers.get('x-ratelimit-remaining'))
+      : null;
+
+    if (status === 404) {
+      return {
+        verified: false,
+        repositoryId: params.repositoryId,
+        projectId: params.projectId,
+        owner,
+        name: repo,
+        branch,
+        currentHeadSha: null,
+        verifiedAt: new Date().toISOString(),
+        providerStatus: 'REPOSITORY_NOT_FOUND',
+        statusMessage: `Repository "${owner}/${repo}" or branch "${branch}" was not found on GitHub.`,
+        tokenValid: true,
+        isPublicFallback: false,
+        rateLimitRemaining,
+        latencyMs: Date.now() - startMs,
+      };
+    }
+
+    if (status === 403 || status === 429) {
+      const isRate = status === 429 || (rateLimitRemaining !== null && rateLimitRemaining <= 0);
+      return {
+        verified: false,
+        repositoryId: params.repositoryId,
+        projectId: params.projectId,
+        owner,
+        name: repo,
+        branch,
+        currentHeadSha: null,
+        verifiedAt: new Date().toISOString(),
+        providerStatus: isRate ? 'RATE_LIMITED' : 'PERMISSION_DENIED',
+        statusMessage: isRate
+          ? 'GitHub API rate limit reached. Freshness could not be verified right now.'
+          : `Access forbidden to repository "${owner}/${repo}". Check GitHub permissions.`,
+        tokenValid: true,
+        isPublicFallback: false,
+        rateLimitRemaining,
+        latencyMs: Date.now() - startMs,
+      };
+    }
+
+    return {
+      verified: false,
+      repositoryId: params.repositoryId,
+      projectId: params.projectId,
+      owner,
+      name: repo,
+      branch,
+      currentHeadSha: null,
+      verifiedAt: new Date().toISOString(),
+      providerStatus: 'GITHUB_UNAVAILABLE',
+      statusMessage: `GitHub API returned unexpected status ${status}.`,
+      tokenValid: true,
+      isPublicFallback: false,
+      rateLimitRemaining,
+      latencyMs: Date.now() - startMs,
+    };
+  } catch (err: any) {
+    const isTimeout = err?.name === 'AbortError' || String(err).includes('aborted');
+    console.error(
+      `[MarrowNode Freshness] Exception verifying HEAD: user=${userScope} repo=${owner}/${repo} branch=${branch} error=${err?.message || err}`
+    );
+
+    return {
+      verified: false,
+      repositoryId: params.repositoryId,
+      projectId: params.projectId,
+      owner,
+      name: repo,
+      branch,
+      currentHeadSha: null,
+      verifiedAt: new Date().toISOString(),
+      providerStatus: isTimeout ? 'TIMEOUT' : 'GITHUB_UNAVAILABLE',
+      statusMessage: isTimeout
+        ? 'GitHub request timed out while verifying branch HEAD.'
+        : 'GitHub service is temporarily unreachable.',
+      tokenValid: Boolean(params.token),
+      isPublicFallback: false,
+      rateLimitRemaining: null,
+      latencyMs: Date.now() - startMs,
+    };
+  }
+}
+
+/**
+ * Fast, timeout-bounded live GitHub HEAD verification for backward compatibility.
  */
 export async function verifyRepositoryHeadSha(params: {
   token: string | null;
@@ -434,37 +784,14 @@ export async function verifyRepositoryHeadSha(params: {
   repo: string;
   branch: string;
   userScope: string;
-}): Promise<{ headSha: string | null; verified: boolean }> {
-  const { token, owner, repo, branch, userScope } = params;
-  if (!token) {
-    return { headSha: null, verified: false };
-  }
-
-  const cacheKey = `${owner.toLowerCase()}/${repo.toLowerCase()}:u:${userScope}:head:${branch}`;
-  const cached = githubCache.get<{ headSha: string | null; verified: boolean }>(cacheKey);
-  if (cached) {
-    return cached.data;
-  }
-
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 2200);
-    try {
-      const commits = await githubRequest<Array<{ sha: string }>>(
-        `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/commits?sha=${encodeURIComponent(branch)}&per_page=1`,
-        token,
-        { signal: controller.signal }
-      );
-      const headSha = commits[0]?.sha || null;
-      const res = { headSha, verified: Boolean(headSha) };
-      githubCache.set(cacheKey, res, 30 * 1000);
-      return res;
-    } finally {
-      clearTimeout(timer);
-    }
-  } catch {
-    return { headSha: null, verified: false };
-  }
+  bypassCache?: boolean;
+}): Promise<{ headSha: string | null; verified: boolean; result?: RepositoryHeadResult }> {
+  const result = await getCurrentRepositoryHead(params);
+  return {
+    headSha: result.currentHeadSha,
+    verified: result.verified,
+    result,
+  };
 }
 
 /**

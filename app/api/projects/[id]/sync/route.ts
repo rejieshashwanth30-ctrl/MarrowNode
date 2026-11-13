@@ -2,7 +2,11 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { requireAuth, getOrCreateCurrentProfile } from '@/lib/auth';
 import { getUserProject } from '@/lib/services/projects';
 import { createAnalysisRun } from '@/lib/services/analysis';
-import { getGitHubTokenForCurrentUser, fetchRepoCommits, githubCache } from '@/lib/github/client';
+import {
+  getGitHubTokenForCurrentUser,
+  getCurrentRepositoryHead,
+  githubCache,
+} from '@/lib/github/client';
 import {
   ANALYZER_VERSION,
   formatAnalysisProgress,
@@ -19,8 +23,10 @@ export const dynamic = 'force-dynamic';
 
 /**
  * POST /api/projects/[id]/sync
- * Checks live GitHub HEAD cleanly. If unchanged and completed cleanly under v3.0: upToDate: true.
- * Otherwise starts resumable batch analysis + paginated history ingestion.
+ * Checks live GitHub branch HEAD truthfully.
+ * - If unchanged and completed under v3.0: returns upToDate: true without running unnecessary re-analysis.
+ * - If newer commit detected on GitHub: initiates safe resumable batch analysis without destroying prior completed analysis.
+ * - If HEAD cannot be verified: returns explicit classified error (401/404/429/504) without claiming false freshness.
  */
 export async function POST(
   request: NextRequest,
@@ -34,19 +40,12 @@ export async function POST(
 
     if (!project.repository || !project.githubOwner || !project.githubRepositoryName) {
       return NextResponse.json(
-        { error: 'Project does not have a linked GitHub repository.' },
+        { error: 'Project does not have a linked GitHub repository.', category: 'REPOSITORY_NOT_FOUND' },
         { status: 400 }
       );
     }
 
-    const { token } = await getGitHubTokenForCurrentUser();
-    if (!token) {
-      return NextResponse.json(
-        { error: 'GitHub access token missing. Please reconnect GitHub.' },
-        { status: 401 }
-      );
-    }
-
+    // Check for an active running/queued job to prevent duplicate concurrent runs
     const activeRun = project.analyses.find(
       (a) =>
         (a.status === 'RUNNING' || a.status === 'QUEUED') &&
@@ -63,36 +62,97 @@ export async function POST(
       });
     }
 
+    const { token } = await getGitHubTokenForCurrentUser();
     const body = await request.json().catch(() => ({}));
     const force = Boolean(body?.force);
 
-    githubCache.invalidateRepo(project.githubOwner, project.githubRepositoryName);
-
-    const recentCommits = await fetchRepoCommits(
-      token,
-      project.githubOwner,
-      project.githubRepositoryName,
-      1,
-      {
-        branch: project.defaultBranch || 'main',
-        bypassCache: true,
-        userScope: profile.id,
-      }
-    );
-
-    const remoteSha = recentCommits[0]?.sha || null;
     const latestCompleted = project.analyses.find(
       (a) => a.status === 'COMPLETED' || a.status === 'PARTIALLY_COMPLETED'
     ) || null;
+    const targetBranch = latestCompleted?.branch || project.defaultBranch || 'main';
+
+    // Invalidate local GitHub cache before checking live HEAD on user-initiated sync
+    githubCache.invalidateRepo(project.githubOwner, project.githubRepositoryName);
+
+    // Verify current branch HEAD via canonical service
+    const headResult = await getCurrentRepositoryHead({
+      token,
+      owner: project.githubOwner,
+      repo: project.githubRepositoryName,
+      branch: targetBranch,
+      userScope: profile.id,
+      repositoryId: project.repository.id,
+      projectId: project.id,
+      analyzedCommitSha: latestCompleted?.commitSha,
+      bypassCache: true,
+    });
+
+    if (!headResult.verified || !headResult.currentHeadSha) {
+      if (headResult.providerStatus === 'TOKEN_EXPIRED' || headResult.providerStatus === 'NO_TOKEN') {
+        return NextResponse.json(
+          {
+            error: 'GitHub authentication expired or token revoked. Please reconnect GitHub and try again.',
+            category: 'AUTHENTICATION_ERROR',
+          },
+          { status: 401 }
+        );
+      }
+      if (headResult.providerStatus === 'RATE_LIMITED') {
+        return NextResponse.json(
+          {
+            error: 'GitHub API rate limit reached. Please wait a moment and try again.',
+            category: 'GITHUB_RATE_LIMIT',
+          },
+          { status: 429 }
+        );
+      }
+      if (headResult.providerStatus === 'REPOSITORY_NOT_FOUND') {
+        return NextResponse.json(
+          {
+            error: `Repository "${project.githubOwner}/${project.githubRepositoryName}" was not found on GitHub.`,
+            category: 'REPOSITORY_NOT_FOUND',
+          },
+          { status: 404 }
+        );
+      }
+      if (headResult.providerStatus === 'BRANCH_NOT_FOUND') {
+        return NextResponse.json(
+          {
+            error: `Branch "${targetBranch}" was not found on GitHub.`,
+            category: 'BRANCH_NOT_FOUND',
+          },
+          { status: 404 }
+        );
+      }
+      if (headResult.providerStatus === 'TIMEOUT') {
+        return NextResponse.json(
+          {
+            error: 'GitHub request timed out while verifying repository changes. Please try again.',
+            category: 'GITHUB_TIMEOUT',
+          },
+          { status: 504 }
+        );
+      }
+
+      return NextResponse.json(
+        {
+          error: headResult.statusMessage || 'Repository freshness could not be verified against GitHub.',
+          category: 'GITHUB_UNAVAILABLE',
+        },
+        { status: 502 }
+      );
+    }
+
+    const remoteSha = headResult.currentHeadSha;
     const localSha = latestCompleted?.commitSha || project.repository?.currentCommitSha || null;
 
+    // Up-to-date check: Same SHA + clean completed state
     if (
       !force &&
       remoteSha &&
       localSha &&
       remoteSha === localSha &&
-      latestCompleted?.analyzerVersion === ANALYZER_VERSION &&
-      latestCompleted.status === 'COMPLETED'
+      (latestCompleted?.status === 'COMPLETED' || latestCompleted?.status === 'PARTIALLY_COMPLETED')
     ) {
       await prisma.repository
         .updateMany({
@@ -108,11 +168,23 @@ export async function POST(
         success: true,
         upToDate: true,
         completed: true,
-        message: `Repository is already up to date with commit ${remoteSha.substring(0, 7)}.`,
+        message: `Analysis up to date — commit ${remoteSha.substring(0, 7)} matches GitHub ${targetBranch}.`,
         commitSha: remoteSha,
       });
     }
 
+    // If changes detected on private repo but token is expired, reject gracefully
+    if (headResult.tokenValid === false && project.visibility === 'private') {
+      return NextResponse.json(
+        {
+          error: 'GitHub authentication expired. Please reconnect GitHub to analyze private repository changes.',
+          category: 'AUTHENTICATION_ERROR',
+        },
+        { status: 401 }
+      );
+    }
+
+    // Changes detected or older analyzer version -> Start new analysis run without deleting previous completed analysis
     const analysis = await createAnalysisRun(projectId, {
       status: 'QUEUED',
       analyzerVersion: ANALYZER_VERSION,
@@ -120,7 +192,7 @@ export async function POST(
     });
 
     await initializeResumableAnalysis({
-      token,
+      token: token || '',
       userId: profile.id,
       projectId,
       repositoryId: project.repository.id,
@@ -130,7 +202,7 @@ export async function POST(
     });
 
     const stepResult = await processAnalysisStep({
-      token,
+      token: token || '',
       userId: profile.id,
       projectId,
       analysisId: analysis.id,
@@ -156,6 +228,9 @@ export async function POST(
       'Repository synchronization could not be completed. Please try again.',
       `sync.POST projectId=${params.id}`
     );
-    return NextResponse.json({ error: safe.message }, { status: safe.statusCode });
+    return NextResponse.json(
+      { error: safe.message, category: safe.category },
+      { status: safe.statusCode }
+    );
   }
 }

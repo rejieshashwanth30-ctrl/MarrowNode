@@ -2,7 +2,11 @@ import { prisma } from '@/lib/prisma';
 import { getOrCreateCurrentProfile, AuthError } from '@/lib/auth';
 import { getActiveUserProject } from '@/lib/services/projects';
 import { telemetry } from '@/lib/observability/timing';
-import { verifyRepositoryHeadSha } from '@/lib/github/client';
+import {
+  getCurrentRepositoryHead,
+  verifyRepositoryHeadSha,
+  type RepositoryHeadResult,
+} from '@/lib/github/client';
 import { getServerGitHubTokenForUser } from '@/lib/github/pr-client';
 import type {
   FileTreeNode,
@@ -76,11 +80,15 @@ export interface ProjectWorkstationContext {
   latestAnalysis: {
     id: string;
     status: string;
-    freshness: 'CURRENT' | 'STALE' | 'ANALYZING' | 'PARTIAL' | 'FAILED' | 'UNVERIFIED';
+    freshness: 'CURRENT' | 'STALE' | 'ANALYZING' | 'PARTIAL' | 'FAILED' | 'UNVERIFIED' | 'SYNC_FAILED';
     freshnessVerified?: boolean;
     freshnessMessage?: string;
     liveHeadSha?: string | null;
     latestRunStatus?: string | null;
+    tokenValid?: boolean;
+    isPublicFallback?: boolean;
+    providerStatus?: string;
+    verifiedAt?: string;
     commitSha: string | null;
     branch: string | null;
     analyzerVersion: string | null;
@@ -211,9 +219,9 @@ export async function resolveActiveProjectContext(
  */
 export async function getProjectWorkstationContext(
   projectId: string,
-  options: { forceFresh?: boolean } = {}
+  options: { forceFresh?: boolean; profile?: any } = {}
 ): Promise<ProjectWorkstationContext> {
-  const profile = await getOrCreateCurrentProfile();
+  const profile = options.profile || (await getOrCreateCurrentProfile());
 
   // 1. Check in-memory workstation context cache (isolated by profile.id)
   if (!options.forceFresh) {
@@ -596,20 +604,30 @@ export async function getProjectWorkstationContext(
   // 13. Live GitHub HEAD Freshness & Stale Detection
   let liveHeadSha: string | null = null;
   let freshnessVerified = false;
-  if (project.githubOwner && project.githubRepositoryName && latestAnalysis?.status === 'COMPLETED') {
+  let headResult: RepositoryHeadResult | null = null;
+
+  if (
+    project.githubOwner &&
+    project.githubRepositoryName &&
+    (latestAnalysis?.status === 'COMPLETED' || latestAnalysis?.status === 'PARTIALLY_COMPLETED')
+  ) {
     const ownerToken = await getServerGitHubTokenForUser(profile.id).catch(() => null);
-    const headResult = await verifyRepositoryHeadSha({
+    headResult = await getCurrentRepositoryHead({
       token: ownerToken,
       owner: project.githubOwner,
       repo: project.githubRepositoryName,
       branch: latestAnalysis.branch || project.defaultBranch || 'main',
       userScope: profile.id,
+      repositoryId: project.repository?.id,
+      projectId: project.id,
+      analyzedCommitSha: latestAnalysis.commitSha,
+      bypassCache: options.forceFresh,
     });
-    liveHeadSha = headResult.headSha;
+    liveHeadSha = headResult.currentHeadSha;
     freshnessVerified = headResult.verified;
   }
 
-  let freshness: 'CURRENT' | 'STALE' | 'ANALYZING' | 'PARTIAL' | 'FAILED' | 'UNVERIFIED' = 'CURRENT';
+  let freshness: 'CURRENT' | 'STALE' | 'ANALYZING' | 'PARTIAL' | 'FAILED' | 'UNVERIFIED' | 'SYNC_FAILED' = 'CURRENT';
   let freshnessMessage = 'Repository analysis matches the latest verified GitHub commit.';
 
   if (!latestAnalysis) {
@@ -622,6 +640,10 @@ export async function getProjectWorkstationContext(
   ) {
     freshness = 'ANALYZING';
     freshnessMessage = `Analyzing repository (${rawLatestAnalysis.processedSourceFiles ?? 0}/${rawLatestAnalysis.totalSourceFiles ?? 0} source files).`;
+  } else if (completedAnalysis && rawLatestAnalysis && rawLatestAnalysis.id !== completedAnalysis.id && rawLatestAnalysis.status === 'FAILED') {
+    // Preserve existing completed analysis while honestly showing sync failure
+    freshness = 'SYNC_FAILED';
+    freshnessMessage = 'Sync failed — showing the last successfully analyzed version.';
   } else if (!completedAnalysis && rawLatestAnalysis?.status === 'FAILED') {
     freshness = 'FAILED';
     freshnessMessage = 'The latest analysis attempt failed.';
@@ -632,17 +654,10 @@ export async function getProjectWorkstationContext(
     liveHeadSha !== latestAnalysis.commitSha
   ) {
     freshness = 'STALE';
-    freshnessMessage = 'Repository has changed since this analysis.';
-  } else if (
-    project.repository?.currentCommitSha &&
-    latestAnalysis.commitSha &&
-    project.repository.currentCommitSha !== latestAnalysis.commitSha
-  ) {
-    freshness = 'STALE';
-    freshnessMessage = 'Repository has changed since this analysis.';
+    freshnessMessage = 'Repository has changed since this analysis (newer commit available on GitHub).';
   } else if (!freshnessVerified && project.githubOwner && project.githubRepositoryName) {
     freshness = 'UNVERIFIED';
-    freshnessMessage = 'Repository freshness could not be verified.';
+    freshnessMessage = headResult?.statusMessage || 'Repository freshness could not be verified.';
   } else if (
     latestAnalysis.status === 'PARTIALLY_COMPLETED' ||
     (computedCoverage &&
@@ -726,6 +741,10 @@ export async function getProjectWorkstationContext(
           freshnessMessage,
           liveHeadSha,
           latestRunStatus: rawLatestAnalysis?.status || latestAnalysis.status,
+          tokenValid: headResult ? headResult.tokenValid : true,
+          isPublicFallback: headResult ? headResult.isPublicFallback : false,
+          providerStatus: headResult ? headResult.providerStatus : undefined,
+          verifiedAt: headResult ? headResult.verifiedAt : undefined,
           commitSha: latestAnalysis.commitSha || null,
           branch: latestAnalysis.branch || project.defaultBranch,
           analyzerVersion: latestAnalysis.analyzerVersion || 'v2.0',

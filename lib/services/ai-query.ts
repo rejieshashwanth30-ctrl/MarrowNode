@@ -762,8 +762,10 @@ export function synthesizeAskAnswerPure(params: {
   const freshness = context.latestAnalysis?.freshness;
   if (freshness === 'STALE') {
     unknown = `${unknown ? `${unknown} ` : ''}Note: Repository has changed since this analysis (${context.latestAnalysis?.commitSha?.slice(0, 7) || 'earlier commit'}).`;
+  } else if (freshness === 'SYNC_FAILED') {
+    unknown = `${unknown ? `${unknown} ` : ''}Note: The latest sync attempt failed; answering from the last successfully analyzed snapshot (${context.latestAnalysis?.commitSha?.slice(0, 7) || 'HEAD'}).`;
   } else if (freshness === 'UNVERIFIED') {
-    unknown = `${unknown ? `${unknown} ` : ''}Note: Repository freshness could not be verified against GitHub.`;
+    unknown = `${unknown ? `${unknown} ` : ''}Note: ${context.latestAnalysis?.freshnessMessage || 'Repository freshness could not be verified against GitHub.'}`;
   } else if (parsedCount < sourceTotal && sourceTotal > 0) {
     unknown = `${unknown ? `${unknown} ` : ''}Partial coverage: ${parsedCount}/${sourceTotal} source files were parsed.`;
   }

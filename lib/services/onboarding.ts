@@ -23,7 +23,7 @@ export interface OnboardingSnapshotBanner {
   commitShort: string | null;
   branch: string;
   analyzedAt: string | null;
-  freshness: 'CURRENT' | 'STALE' | 'ANALYZING' | 'PARTIAL' | 'FAILED' | 'UNVERIFIED';
+  freshness: 'CURRENT' | 'STALE' | 'ANALYZING' | 'PARTIAL' | 'FAILED' | 'UNVERIFIED' | 'SYNC_FAILED';
   overallCoveragePercent: number;
   sourceFilesTotal: number;
   sourceFilesParsed: number;
@@ -436,6 +436,10 @@ export function assembleDeveloperOnboardingReport(params: {
         noticeTitle = 'Latest Analysis Failed';
         noticeMessage =
           'The latest analysis run did not complete cleanly. Shown context may be incomplete until re-analysis succeeds.';
+      } else if (freshness === 'SYNC_FAILED') {
+        noticeTitle = 'Synchronization failed';
+        noticeMessage =
+          'The latest sync attempt failed. Shown onboarding context reflects the last successfully analyzed version.';
       } else if (freshness === 'UNVERIFIED') {
         noticeTitle = 'Repository freshness could not be verified.';
         noticeMessage =

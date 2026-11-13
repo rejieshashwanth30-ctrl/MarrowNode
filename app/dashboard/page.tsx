@@ -53,6 +53,7 @@ export default function DashboardPage() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [analysisErrorCategory, setAnalysisErrorCategory] = useState<string | null>(null);
   const [showRepoModal, setShowRepoModal] = useState(false);
 
   const [syncStatusMessage, setSyncStatusMessage] = useState<string | null>(null);
@@ -274,6 +275,8 @@ export default function DashboardPage() {
     if (!selectedProjectId) return;
     setIsRefreshing(true);
     setSyncStatusMessage(null);
+    setAnalysisError(null);
+    setAnalysisErrorCategory(null);
 
     try {
       const res = await fetch(`/api/projects/${selectedProjectId}/sync`, {
@@ -287,15 +290,19 @@ export default function DashboardPage() {
           setSyncStatusMessage(data.message || 'Sync started; processing repository batches…');
           driveAnalysisSteps(selectedProjectId, data.analysisId);
         } else {
-          setSyncStatusMessage(data.message || 'Project updated with latest changes.');
-          setTimeout(() => setSyncStatusMessage(null), 4000);
+          setSyncStatusMessage(data.message || 'Analysis up to date — project intelligence is current.');
+          setAnalysisError(null);
+          setAnalysisErrorCategory(null);
+          setTimeout(() => setSyncStatusMessage(null), 5000);
           await fetchDashboardData(selectedProjectId);
         }
       } else {
         setAnalysisError(data.error || 'Could not sync changes. Try syncing again.');
+        setAnalysisErrorCategory(data.category || null);
       }
     } catch (err: any) {
       setAnalysisError(err?.message || 'Could not sync project changes.');
+      setAnalysisErrorCategory('UNKNOWN_ERROR');
     } finally {
       setIsRefreshing(false);
     }
@@ -387,6 +394,7 @@ export default function DashboardPage() {
           project={selectedProject}
           projects={projects}
           onSelectProject={handleSelectProject}
+          gitHubTokenExpired={projectContext?.latestAnalysis?.tokenValid === false}
         />
 
         {/* Scrollable Content Surface — reserves bottom nav height + safe-area inset */}
@@ -443,28 +451,41 @@ export default function DashboardPage() {
             </div>
           )}
 
-          {/* Mandatory Stale / Unverified Freshness Disclosure */}
+          {/* Mandatory Stale / Unverified / Sync-Failed Freshness Disclosure */}
           {selectedProject &&
             (projectContext?.latestAnalysis?.freshness === 'STALE' ||
-              projectContext?.latestAnalysis?.freshness === 'UNVERIFIED') && (
+              projectContext?.latestAnalysis?.freshness === 'UNVERIFIED' ||
+              projectContext?.latestAnalysis?.freshness === 'SYNC_FAILED') && (
               <div className="p-3 mx-3 sm:mx-6 mt-3 rounded bg-amber-500/10 border border-amber-500/30 text-amber-800 dark:text-amber-300 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 font-sans">
                 <div className="flex items-start sm:items-center gap-2 min-w-0">
                   <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 sm:mt-0" />
                   <span className="break-words">
-                    {projectContext.latestAnalysis.freshness === 'STALE'
-                      ? 'Repository has changed since this analysis.'
-                      : 'Repository freshness could not be verified.'}
+                    {projectContext.latestAnalysis.freshnessMessage ||
+                      (projectContext.latestAnalysis.freshness === 'STALE'
+                        ? 'Repository has changed since this analysis (newer commit available on GitHub).'
+                        : projectContext.latestAnalysis.freshness === 'SYNC_FAILED'
+                          ? 'Sync failed — showing the last successfully analyzed version.'
+                          : 'Repository freshness could not be verified.')}
                   </span>
                 </div>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={handleSyncProject}
-                  disabled={isRefreshing || isAnalyzing}
-                  className="shrink-0 self-start sm:self-center text-xs"
-                >
-                  Sync &amp; Re-analyze
-                </Button>
+                <div className="flex items-center gap-2 shrink-0 self-start sm:self-center">
+                  {projectContext?.latestAnalysis?.tokenValid === false && (
+                    <a href="/auth">
+                      <Button variant="outline" size="sm" className="text-xs h-7">
+                        Reconnect GitHub
+                      </Button>
+                    </a>
+                  )}
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={handleSyncProject}
+                    disabled={isRefreshing || isAnalyzing}
+                    className="shrink-0 text-xs"
+                  >
+                    Sync changes
+                  </Button>
+                </div>
               </div>
             )}
 
@@ -488,19 +509,31 @@ export default function DashboardPage() {
 
           {/* Analysis error alert */}
           {analysisError && (
-            <div className="p-3.5 mx-3 sm:mx-6 mt-3 rounded bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 text-xs flex items-center justify-between gap-2 font-sans">
-              <div className="flex items-center gap-2 min-w-0">
-                <AlertCircle className="w-4 h-4 shrink-0" />
+            <div className="p-3.5 mx-3 sm:mx-6 mt-3 rounded bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 font-sans">
+              <div className="flex items-start sm:items-center gap-2 min-w-0">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 sm:mt-0" />
                 <span className="break-words">{analysisError}</span>
               </div>
-              <button
-                type="button"
-                aria-label="Dismiss error"
-                onClick={() => setAnalysisError(null)}
-                className="text-text-muted hover:text-text-primary dark:hover:text-white shrink-0"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
+              <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                {analysisErrorCategory === 'AUTHENTICATION_ERROR' && (
+                  <a href="/auth">
+                    <Button variant="outline" size="sm" className="text-xs h-7">
+                      Reconnect GitHub
+                    </Button>
+                  </a>
+                )}
+                <button
+                  type="button"
+                  aria-label="Dismiss error"
+                  onClick={() => {
+                    setAnalysisError(null);
+                    setAnalysisErrorCategory(null);
+                  }}
+                  className="text-text-muted hover:text-text-primary dark:hover:text-white shrink-0"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
           )}
 

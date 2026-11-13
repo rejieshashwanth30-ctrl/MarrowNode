@@ -112,6 +112,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(
         {
           error: error.message,
+          connectionStatus: error.isAuthError ? 'token_expired' : 'connected',
           isRateLimit: error.isRateLimit,
           isAuthError: error.isAuthError,
           repositories: [],

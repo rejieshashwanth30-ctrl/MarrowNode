@@ -25,6 +25,7 @@ interface TopbarProps {
   } | null;
   projects?: Array<{ id: string; name: string; githubOwner?: string | null }>;
   onSelectProject?: (projectId: string) => void;
+  gitHubTokenExpired?: boolean;
 }
 
 export function Topbar({
@@ -34,6 +35,7 @@ export function Topbar({
   project,
   projects = [],
   onSelectProject,
+  gitHubTokenExpired = false,
 }: TopbarProps) {
   const { resolvedTheme, setTheme } = useTheme();
   const [dropdownOpen, setDropdownOpen] = React.useState(false);
@@ -152,17 +154,29 @@ export function Topbar({
           )}
         </button>
 
-        {/* GitHub link button */}
-        <Link
-          href="https://github.com"
-          target="_blank"
-          rel="noopener noreferrer"
-          aria-label="Open GitHub"
-          className="hidden md:flex items-center gap-1.5 h-8 px-2.5 text-xs font-sans text-text-secondary hover:text-text-primary rounded hover:bg-surface-muted transition-colors dark:text-[#C6CDC7] dark:hover:text-white whitespace-nowrap"
-        >
-          <Github className="w-3.5 h-3.5 shrink-0" />
-          <span>GitHub</span>
-        </Link>
+        {/* GitHub link / reconnect button */}
+        {gitHubTokenExpired ? (
+          <Link
+            href="/auth"
+            aria-label="Reconnect GitHub"
+            className="flex items-center gap-1.5 h-8 px-2.5 text-xs font-sans text-amber-700 bg-amber-500/10 border border-amber-500/30 rounded hover:bg-amber-500/20 transition-colors dark:text-amber-300 dark:border-amber-500/40 whitespace-nowrap"
+          >
+            <Github className="w-3.5 h-3.5 shrink-0" />
+            <span className="hidden sm:inline">Reconnect GitHub</span>
+            <span className="sm:hidden">Reconnect</span>
+          </Link>
+        ) : (
+          <Link
+            href="https://github.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Open GitHub"
+            className="hidden md:flex items-center gap-1.5 h-8 px-2.5 text-xs font-sans text-text-secondary hover:text-text-primary rounded hover:bg-surface-muted transition-colors dark:text-[#C6CDC7] dark:hover:text-white whitespace-nowrap"
+          >
+            <Github className="w-3.5 h-3.5 shrink-0" />
+            <span>GitHub</span>
+          </Link>
+        )}
       </div>
     </header>
   );

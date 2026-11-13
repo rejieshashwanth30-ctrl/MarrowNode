@@ -24,7 +24,15 @@ import { parseSourceFileAST } from '../lib/analysis/ast-parser';
 import { parseTsConfig, resolveImportSpecifier } from '../lib/analysis/path-resolver';
 import { synthesizeAskAnswerPure } from '../lib/services/ai-query';
 import { getSafeErrorResponse } from '../lib/errors';
-import type { ProjectWorkstationContext } from '../lib/services/project-context';
+import {
+  getProjectWorkstationContext,
+  type ProjectWorkstationContext,
+} from '../lib/services/project-context';
+import {
+  getCurrentRepositoryHead,
+  verifyRepositoryHeadSha,
+  GitHubApiError,
+} from '../lib/github/client';
 import type { FileTreeNode } from '../types';
 import {
   partitionIntoBatches,
@@ -1306,5 +1314,207 @@ test('Scalability DB: Neon PostgreSQL AnalysisBatch persistence, ProjectCommit >
   } finally {
     // Multi-tenant cleanup
     await prisma.user.delete({ where: { id: testUserId } }).catch(() => {});
+  }
+});
+
+// =========================================================================
+// 8. REPOSITORY FRESHNESS + GITHUB SYNCHRONIZATION PRODUCTION FIX TESTS
+// =========================================================================
+
+test('Freshness F1: getCurrentRepositoryHead canonical identity, bounded timeout, and public fallback', async () => {
+  // A. Public repo with NO token succeeds and returns PUBLIC_VERIFIED
+  const publicHead = await getCurrentRepositoryHead({
+    token: null,
+    owner: 'rejieshashwanth30-ctrl',
+    repo: 'gitrium',
+    branch: 'main',
+    userScope: 'test-user',
+    bypassCache: true,
+  });
+  assert.equal(publicHead.verified, true);
+  assert.equal(publicHead.owner, 'rejieshashwanth30-ctrl');
+  assert.equal(publicHead.name, 'gitrium');
+  assert.equal(publicHead.branch, 'main');
+  assert.equal(publicHead.providerStatus, 'PUBLIC_VERIFIED');
+  assert.equal(publicHead.tokenValid, false);
+  assert.equal(publicHead.isPublicFallback, true);
+  assert.ok(typeof publicHead.currentHeadSha === 'string' && publicHead.currentHeadSha.length >= 7);
+
+  // B. Public repo with bad/expired token detects 401, flags tokenValid: false, and succeeds via public fallback
+  const badTokenHead = await getCurrentRepositoryHead({
+    token: 'gho_bad_invalid_revoked_token_1234567890',
+    owner: 'rejieshashwanth30-ctrl',
+    repo: 'gitrium',
+    branch: 'main',
+    userScope: 'test-user',
+    bypassCache: true,
+  });
+  assert.equal(badTokenHead.verified, true);
+  assert.equal(badTokenHead.providerStatus, 'PUBLIC_VERIFIED');
+  assert.equal(badTokenHead.tokenValid, false);
+  assert.equal(badTokenHead.isPublicFallback, true);
+  assert.ok(badTokenHead.statusMessage.includes('GitHub OAuth token is expired and needs reconnect'));
+
+  // C. Nonexistent repo returns REPOSITORY_NOT_FOUND (not crashed or false fresh)
+  const missingHead = await getCurrentRepositoryHead({
+    token: null,
+    owner: 'nonexistent-owner-abc12345',
+    repo: 'nonexistent-repo-xyz67890',
+    branch: 'main',
+    userScope: 'test-user',
+    bypassCache: true,
+  });
+  assert.equal(missingHead.verified, false);
+  assert.equal(missingHead.currentHeadSha, null);
+  assert.ok(['REPOSITORY_NOT_FOUND', 'NO_TOKEN', 'GITHUB_UNAVAILABLE'].includes(missingHead.providerStatus));
+});
+
+test('Freshness F2: getSafeErrorResponse error classification & safe ECONN word-boundary handling', () => {
+  // A. Prisma / Neon database error is masked cleanly
+  const dbErr = new Error('Invalid prisma.project.findMany() invocation: relation "projects" does not exist');
+  const safeDb = getSafeErrorResponse(dbErr, 'Database operation failed.', 'test');
+  assert.equal(safeDb.message, 'Database operation failed.');
+  assert.equal(safeDb.statusCode, 500);
+  assert.equal(safeDb.category, 'DATABASE_ERROR');
+
+  // B. Reconnect GitHub message is NOT masked as ECONN
+  const reconnectErr = new Error('GitHub authentication expired or token revoked. Please reconnect GitHub.');
+  const safeReconnect = getSafeErrorResponse(reconnectErr, 'Sync failed.', 'test');
+  assert.ok(safeReconnect.message.includes('reconnect GitHub'));
+  assert.equal(safeReconnect.category, 'UNKNOWN_ERROR');
+
+  // C. GitHubApiError 401 is classified as AUTHENTICATION_ERROR
+  const authErr = new GitHubApiError('Bad credentials', 401);
+  const safeAuth = getSafeErrorResponse(authErr, 'Sync failed.', 'test');
+  assert.equal(safeAuth.statusCode, 401);
+  assert.equal(safeAuth.category, 'AUTHENTICATION_ERROR');
+  assert.ok(safeAuth.message.includes('reconnect GitHub'));
+
+  // D. GitHubApiError 429 rate limit is classified as GITHUB_RATE_LIMIT
+  const rateErr = new GitHubApiError('API rate limit exceeded', 429);
+  const safeRate = getSafeErrorResponse(rateErr, 'Sync failed.', 'test');
+  assert.equal(safeRate.statusCode, 429);
+  assert.equal(safeRate.category, 'GITHUB_RATE_LIMIT');
+});
+
+test('Freshness F3: Neon DB Project Workstation Context freshness, sync-failed preservation, and multi-tenant isolation', async () => {
+  const suffix = crypto.randomBytes(4).toString('hex');
+  const userAId = `fresh-user-a-${suffix}`;
+  const userBId = `fresh-user-b-${suffix}`;
+  const projAId = `fresh-proj-a-${suffix}`;
+  const repoAId = `fresh-repo-a-${suffix}`;
+
+  try {
+    // 1. Create User A and User B
+    const userA = await prisma.user.create({
+      data: {
+        id: userAId,
+        supabaseUserId: `sb-fresh-a-${suffix}`,
+        email: `fresh-a-${suffix}@test.local`,
+        displayName: 'User A',
+      },
+    });
+
+    const userB = await prisma.user.create({
+      data: {
+        id: userBId,
+        supabaseUserId: `sb-fresh-b-${suffix}`,
+        email: `fresh-b-${suffix}@test.local`,
+        displayName: 'User B',
+      },
+    });
+
+    // 2. Create Project for User A linked to public gitrium repo
+    const projA = await prisma.project.create({
+      data: {
+        id: projAId,
+        ownerId: userAId,
+        name: 'gitrium',
+        githubOwner: 'rejieshashwanth30-ctrl',
+        githubRepositoryName: 'gitrium',
+        defaultBranch: 'main',
+        isActive: true,
+      },
+    });
+
+    await prisma.repository.create({
+      data: {
+        id: repoAId,
+        projectId: projAId,
+        githubRepoId: `gh-gitrium-${suffix}`,
+        owner: 'rejieshashwanth30-ctrl',
+        name: 'gitrium',
+        fullName: 'rejieshashwanth30-ctrl/gitrium',
+        url: 'https://github.com/rejieshashwanth30-ctrl/gitrium',
+        defaultBranch: 'main',
+        currentCommitSha: 'a37db7eb5b023be512b8c90f6f1dea2046dfbfc7',
+      },
+    });
+
+    // 3. Create completed analysis with exact gitrium commit
+    const ana1 = await prisma.analysis.create({
+      data: {
+        projectId: projAId,
+        repositoryId: repoAId,
+        status: 'COMPLETED',
+        analyzerVersion: ANALYZER_VERSION,
+        commitSha: 'a37db7eb5b023be512b8c90f6f1dea2046dfbfc7',
+        branch: 'main',
+        filesAnalyzed: 100,
+        totalFiles: 100,
+        totalSourceFiles: 100,
+        processedSourceFiles: 100,
+      },
+    });
+
+    await prisma.evidence.create({
+      data: {
+        projectId: projAId,
+        type: 'architecture',
+        title: 'Project Architecture Graph',
+        metadata: {
+          dependencyEdges: [],
+          nodes: [{ id: 'app', name: 'app', type: 'module' }],
+        },
+      },
+    });
+
+    // 4. Test Case 1: Matching SHA -> CURRENT freshness
+    const ctxFresh = await getProjectWorkstationContext(projAId, { forceFresh: true, profile: userA });
+    assert.equal(ctxFresh.latestAnalysis?.freshness, 'CURRENT');
+    assert.equal(ctxFresh.latestAnalysis?.freshnessVerified, true);
+    assert.equal(ctxFresh.latestAnalysis?.liveHeadSha, 'a37db7eb5b023be512b8c90f6f1dea2046dfbfc7');
+    assert.ok(ctxFresh.latestAnalysis?.freshnessMessage?.includes('matches'));
+
+    // 5. Test Case 2: Newer failed analysis does NOT destroy previous completed analysis (SYNC_FAILED preservation)
+    const anaFailed = await prisma.analysis.create({
+      data: {
+        projectId: projAId,
+        repositoryId: repoAId,
+        status: 'FAILED',
+        analyzerVersion: ANALYZER_VERSION,
+        commitSha: 'newer_sha_that_failed',
+        branch: 'main',
+        errorMessage: 'Network timeout during batch 2',
+      },
+    });
+
+    const ctxFailedPreserved = await getProjectWorkstationContext(projAId, { forceFresh: true, profile: userA });
+    // Must preserve completed analysis as source of truth
+    assert.equal(ctxFailedPreserved.latestAnalysis?.id, ana1.id, 'Must keep previous COMPLETED analysis');
+    assert.equal(ctxFailedPreserved.latestAnalysis?.freshness, 'SYNC_FAILED');
+    assert.ok(ctxFailedPreserved.latestAnalysis?.freshnessMessage?.includes('Sync failed'));
+    assert.ok(ctxFailedPreserved.nodes.length > 0, 'Previous architecture evidence must remain intact');
+
+    // 6. Test Case 3: Multi-tenant isolation — User B cannot read User A project context
+    await assert.rejects(
+      async () => {
+        await getProjectWorkstationContext(projAId, { forceFresh: true, profile: userB });
+      },
+      (err: any) => err.statusCode === 404 || err.message.includes('not found')
+    );
+  } finally {
+    // Multi-tenant cleanup
+    await prisma.user.deleteMany({ where: { id: { in: [userAId, userBId] } } }).catch(() => {});
   }
 });
