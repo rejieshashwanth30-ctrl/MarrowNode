@@ -38,3 +38,4 @@ export async function GET(
     return NextResponse.json({ error: safe.message }, { status: safe.statusCode });
   }
 }
+

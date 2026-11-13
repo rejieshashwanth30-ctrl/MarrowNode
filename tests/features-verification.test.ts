@@ -32,7 +32,7 @@ import {
   validateGitHubConnection,
   invalidateGitHubConnectionCache,
 } from '../lib/github/connection-validator';
-import { sanitizeRedirectPath } from '../lib/origin';
+import { sanitizeRedirectPath, getAppOrigin, CANONICAL_PUBLIC_ORIGIN } from '../lib/origin';
 import { saveGitHubConnection } from '../lib/services/users';
 import {
   getCurrentRepositoryHead,
@@ -1709,6 +1709,27 @@ test('GitHub OAuth, Token Lifecycle, Account Switching & Connection Validator', 
       assert.equal(sanitizeRedirectPath('//evil.com/phish'), '/dashboard');
       assert.equal(sanitizeRedirectPath('/\\evil.com'), '/dashboard');
       assert.equal(sanitizeRedirectPath(null), '/dashboard');
+    });
+
+    // Subtest H: Canonical domain resolver enforces https://www.marrownode.online
+    await t.test('Canonical domain resolver enforces https://www.marrownode.online and protects against preview URLs', () => {
+      assert.equal(CANONICAL_PUBLIC_ORIGIN, 'https://www.marrownode.online');
+
+      // Vercel deployment host maps to canonical domain
+      const vercelReq = { headers: new Headers({ host: 'marrow-node.vercel.app' }) };
+      assert.equal(getAppOrigin(vercelReq), 'https://www.marrownode.online');
+
+      // Apex domain maps to canonical www domain
+      const apexReq = { headers: new Headers({ host: 'marrownode.online' }) };
+      assert.equal(getAppOrigin(apexReq), 'https://www.marrownode.online');
+
+      // Canonical domain passes through
+      const canonicalReq = { headers: new Headers({ host: 'www.marrownode.online' }) };
+      assert.equal(getAppOrigin(canonicalReq), 'https://www.marrownode.online');
+
+      // Localhost is preserved for local development
+      const localReq = { headers: new Headers({ host: 'localhost:3000' }) };
+      assert.equal(getAppOrigin(localReq), 'http://localhost:3000');
     });
   } finally {
     globalThis.fetch = origFetch;

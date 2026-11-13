@@ -17,10 +17,29 @@ const ibmPlexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'MarrowNode — The Memory Layer for Software',
+  metadataBase: new URL('https://www.marrownode.online'),
+  title: {
+    default: 'MarrowNode — The Memory Layer for Software',
+    template: '%s | MarrowNode',
+  },
   description: 'Understand your codebase, trace how it evolved, and uncover the context behind the software you build.',
   icons: {
     icon: '/favicon.png',
+  },
+  alternates: {
+    canonical: 'https://www.marrownode.online',
+  },
+  openGraph: {
+    title: 'MarrowNode — The Memory Layer for Software',
+    description: 'Understand your codebase, trace how it evolved, and uncover the context behind the software you build.',
+    url: 'https://www.marrownode.online',
+    siteName: 'MarrowNode',
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'MarrowNode — The Memory Layer for Software',
+    description: 'Understand your codebase, trace how it evolved, and uncover the context behind the software you build.',
   },
 };
 

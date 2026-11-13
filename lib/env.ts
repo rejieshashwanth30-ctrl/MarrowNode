@@ -1,3 +1,5 @@
+import { CANONICAL_PUBLIC_ORIGIN } from '@/lib/origin';
+
 /**
  * MarrowNode Server-Side Environment Validation
  * Validates required environment variables safely without printing secret values.
@@ -33,15 +35,27 @@ export function validateEnv(): ValidatedEnv {
     console.warn(errorMsg);
   }
 
+  // Resolve canonical public URL: never allow preview deployment URLs in production
+  let appUrl =
+    process.env.NEXT_PUBLIC_SITE_URL ||
+    process.env.NEXT_PUBLIC_APP_URL ||
+    (process.env.NODE_ENV === 'production' || process.env.VERCEL === '1'
+      ? CANONICAL_PUBLIC_ORIGIN
+      : 'http://localhost:3000');
+
+  if (
+    (process.env.NODE_ENV === 'production' || process.env.VERCEL === '1') &&
+    (appUrl.includes('.vercel.app') || appUrl.includes('marrownode.online'))
+  ) {
+    appUrl = CANONICAL_PUBLIC_ORIGIN;
+  }
+
   return {
     DATABASE_URL: dbUrl || '',
     DIRECT_URL: directUrl || dbUrl || '',
     NEXT_PUBLIC_SUPABASE_URL: supabaseUrl || '',
     NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: supabaseKey || '',
-    NEXT_PUBLIC_APP_URL:
-      process.env.NEXT_PUBLIC_APP_URL ||
-      process.env.NEXT_PUBLIC_SITE_URL ||
-      (process.env.NODE_ENV === 'production' ? 'https://marrow-node.vercel.app' : 'http://localhost:3000'),
+    NEXT_PUBLIC_APP_URL: appUrl.replace(/\/+$/, ''),
   };
 }
 

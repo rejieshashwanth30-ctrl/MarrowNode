@@ -3,11 +3,11 @@
  *
  * Provides a single source of truth for the application's base URL and strictly validates
  * redirect targets to eliminate open redirect vulnerabilities.
- * Enforces the canonical public production domain (https://marrow-node.vercel.app)
+ * Enforces the canonical public production domain (https://www.marrownode.online)
  * and strictly prevents redirects to Vercel preview/deployment URLs which require Vercel login.
  */
 
-export const CANONICAL_PUBLIC_ORIGIN = 'https://marrow-node.vercel.app';
+export const CANONICAL_PUBLIC_ORIGIN = 'https://www.marrownode.online';
 
 export function getAppOrigin(
   request?: Request | { headers?: Headers | { get(key: string): string | null } }
@@ -24,8 +24,13 @@ export function getAppOrigin(
       if (cleanHost.includes('localhost') || cleanHost.includes('127.0.0.1')) {
         return `http://${cleanHost}`;
       }
-      // Any Vercel deployment URL or custom domain maps to canonical public origin
-      if (cleanHost.endsWith('.vercel.app') || cleanHost.includes('marrow')) {
+      // Any Vercel deployment URL, apex domain, or preview domain maps strictly to canonical public origin
+      if (
+        cleanHost.endsWith('.vercel.app') ||
+        cleanHost.includes('marrow') ||
+        cleanHost === 'marrownode.online' ||
+        cleanHost === 'www.marrownode.online'
+      ) {
         return CANONICAL_PUBLIC_ORIGIN;
       }
     }
@@ -33,25 +38,33 @@ export function getAppOrigin(
 
   // 2. Browser context:
   if (typeof window !== 'undefined' && window.location?.origin) {
-    const origin = window.location.origin;
+    const origin = window.location.origin.replace(/\/+$/, '');
     if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
       return origin;
     }
-    // If the browser is on any Vercel domain, use the canonical public origin
-    if (origin.includes('.vercel.app')) {
+    // If the browser is on any Vercel domain or apex domain, enforce the canonical public origin
+    if (
+      origin.includes('.vercel.app') ||
+      origin.includes('marrownode.online') ||
+      origin.includes('marrow')
+    ) {
       return CANONICAL_PUBLIC_ORIGIN;
     }
     return origin;
   }
 
   // 3. Explicit environment variables (if set)
-  const envUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_SITE_URL;
+  const envUrl = process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_APP_URL;
   if (envUrl && envUrl.trim().length > 0) {
-    const clean = envUrl.trim().replace(/\/$/, '');
+    const clean = envUrl.trim().replace(/\/+$/, '');
     if (clean.includes('localhost') || clean.includes('127.0.0.1')) {
       return clean;
     }
-    if (clean.includes('.vercel.app')) {
+    if (
+      clean.includes('.vercel.app') ||
+      clean.includes('marrownode.online') ||
+      clean.includes('marrow')
+    ) {
       return CANONICAL_PUBLIC_ORIGIN;
     }
     return clean;
