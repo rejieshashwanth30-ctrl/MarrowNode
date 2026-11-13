@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/auth';
-import { getGitHubTokenForCurrentUser } from '@/lib/github/client';
+import { requireAuth, getOrCreateCurrentProfile } from '@/lib/auth';
+import { validateGitHubConnection } from '@/lib/github/connection-validator';
+import { ensureMarrowNodeSchema } from '@/lib/db/init';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,46 +9,37 @@ export const dynamic = 'force-dynamic';
  * GET /api/github/status
  *
  * Checks GitHub connection status for the authenticated user without exposing tokens.
+ * Uses the canonical validateGitHubConnection validator.
  */
 export async function GET(request: Request) {
   try {
-    await requireAuth();
-    const { token, githubUsername, connectionStatus } = await getGitHubTokenForCurrentUser();
+    await ensureMarrowNodeSchema();
+    const supabaseUser = await requireAuth();
+    const profile = await getOrCreateCurrentProfile(supabaseUser);
 
     const url = new URL(request.url);
     const validate = url.searchParams.get('validate') === 'true';
 
-    let isConnected = connectionStatus === 'connected' && Boolean(token);
-    let tokenExpired = connectionStatus === 'token_expired';
+    const validation = await validateGitHubConnection({
+      userId: profile.id,
+      forceFresh: validate,
+    });
 
-    if (validate && token && isConnected) {
-      try {
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 3000);
-        const res = await fetch('https://api.github.com/user', {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            Accept: 'application/vnd.github+json',
-            'User-Agent': 'MarrowNode-Developer-Intelligence',
-          },
-          signal: controller.signal,
-        });
-        clearTimeout(timer);
-        if (res.status === 401) {
-          isConnected = false;
-          tokenExpired = true;
-        }
-      } catch {
-        // network issue or timeout; preserve current state
-      }
-    }
+    const isConnected = validation.valid;
+    const tokenExpired = validation.state === 'TOKEN_EXPIRED';
+    const effectiveUsername = validation.verifiedLogin || validation.githubUsername;
 
     return NextResponse.json({
       connected: isConnected,
-      githubUsername,
-      hasToken: Boolean(token),
+      state: validation.state,
+      githubUsername: effectiveUsername,
+      hasToken: Boolean(validation.token),
       tokenExpired,
-      connectionStatus: tokenExpired ? 'token_expired' : connectionStatus,
+      requiresReconnect: validation.requiresReconnect,
+      connectionStatus: tokenExpired ? 'token_expired' : validation.state.toLowerCase(),
+      scopes: validation.scopes,
+      rateLimitRemaining: validation.rateLimitRemaining,
+      statusMessage: validation.statusMessage,
     });
   } catch (error: any) {
     return NextResponse.json(

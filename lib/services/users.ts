@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import { requireAuth, AuthError, getOrCreateCurrentProfile } from '@/lib/auth';
+import { invalidateGitHubConnectionCache } from '@/lib/github/connection-validator';
 
 export interface SyncProfileData {
   supabaseUserId: string;
@@ -76,7 +77,7 @@ export async function saveGitHubConnection(
     throw new AuthError('Profile not found for authenticated user', 404);
   }
 
-  return prisma.gitHubConnection.upsert({
+  const result = await prisma.gitHubConnection.upsert({
     where: { userId: profile.id },
     update: {
       githubAccountId: data.githubAccountId,
@@ -94,6 +95,12 @@ export async function saveGitHubConnection(
       connectionStatus: 'connected',
     },
   });
+
+  // Invalidate any cached validation for this user across profile and supabase IDs
+  invalidateGitHubConnectionCache(profile.id);
+  invalidateGitHubConnectionCache(supabaseUserId);
+
+  return result;
 }
 
 /**

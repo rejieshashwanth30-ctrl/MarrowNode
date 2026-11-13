@@ -4,6 +4,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardHeader, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
+import { createClient } from '@/utils/supabase/client';
+import { getAppOrigin } from '@/lib/origin';
 import {
   Github,
   Search,
@@ -57,6 +59,8 @@ export function RepositorySelector({
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [errorType, setErrorType] = useState<string | null>(null);
+  const [requiresReconnect, setRequiresReconnect] = useState(false);
+  const [isReconnecting, setIsReconnecting] = useState(false);
   const [githubUsername, setGithubUsername] = useState<string | null>(null);
 
   // Filter & Search state
@@ -69,6 +73,31 @@ export function RepositorySelector({
   const [selectedRepo, setSelectedRepo] = useState<RepositoryItem | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectError, setConnectError] = useState<string | null>(null);
+
+  // Safe reconnect handler via Supabase OAuth with prompt=consent
+  const handleReconnectGitHub = useCallback(async () => {
+    setIsReconnecting(true);
+    try {
+      const supabase = createClient();
+      const origin = getAppOrigin();
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'github',
+        options: {
+          redirectTo: `${origin}/auth/callback?next=/dashboard?openRepoSelector=true`,
+          scopes: 'read:user repo',
+          queryParams: {
+            prompt: 'consent',
+          },
+        },
+      });
+
+      if (error) {
+        window.location.href = `/auth?reconnect=true&next=${encodeURIComponent('/dashboard?openRepoSelector=true')}`;
+      }
+    } catch {
+      window.location.href = `/auth?reconnect=true&next=${encodeURIComponent('/dashboard?openRepoSelector=true')}`;
+    }
+  }, []);
 
   // Fetch repositories from API
   const fetchRepos = useCallback(
@@ -96,6 +125,14 @@ export function RepositorySelector({
         if (!res.ok) {
           setError(data.error || 'Unable to load repositories. Try again.');
           setErrorType(data.connectionStatus || (data.isRateLimit ? 'rate_limit' : 'error'));
+          setRequiresReconnect(
+            Boolean(data.requiresReconnect) ||
+            data.connectionStatus === 'token_expired' ||
+            data.connectionStatus === 'token_missing' ||
+            data.connectionStatus === 'not_connected' ||
+            data.connectionStatus === 'account_mismatch' ||
+            data.connectionStatus === 'permission_denied'
+          );
           setRepositories([]);
           return;
         }
@@ -112,6 +149,7 @@ export function RepositorySelector({
 
         setPage(targetPage);
         setHasMore(Boolean(data.hasMore));
+        setRequiresReconnect(false);
       } catch (err: any) {
         setError(err?.message || 'Unable to load repositories. Try again.');
         setErrorType('error');
@@ -179,9 +217,19 @@ export function RepositorySelector({
               <h2 className="text-sm sm:text-base font-semibold text-text-primary dark:text-white flex items-center gap-2">
                 <span>Select GitHub Repository</span>
                 {githubUsername && (
-                  <Badge variant="neutral" size="sm" className="font-mono text-[11px] font-normal">
-                    @{githubUsername}
-                  </Badge>
+                  <div className="flex items-center gap-1.5">
+                    <Badge variant="neutral" size="sm" className="font-mono text-[11px] font-normal">
+                      @{githubUsername}
+                    </Badge>
+                    <button
+                      type="button"
+                      onClick={handleReconnectGitHub}
+                      className="text-[11px] text-forest dark:text-[#88B094] hover:underline cursor-pointer"
+                      title="Connect or switch GitHub account"
+                    >
+                      Switch
+                    </button>
+                  </div>
                 )}
               </h2>
               <p className="text-xs text-text-muted">
@@ -354,6 +402,12 @@ export function RepositorySelector({
                       ? 'GitHub API rate limit reached'
                       : errorType === 'token_missing' || errorType === 'not_connected'
                       ? 'GitHub connection required'
+                      : errorType === 'account_mismatch'
+                      ? 'GitHub account mismatch'
+                      : errorType === 'permission_denied'
+                      ? 'GitHub permission required'
+                      : errorType === 'token_expired'
+                      ? 'GitHub authorization expired'
                       : 'Unable to load repositories'}
                   </h4>
                   <p className="text-xs text-text-muted leading-relaxed">
@@ -361,13 +415,22 @@ export function RepositorySelector({
                   </p>
                 </div>
                 <div className="pt-1">
-                  {errorType === 'not_connected' || errorType === 'token_missing' ? (
-                    <a href="/auth">
-                      <Button variant="primary" size="sm" className="text-xs font-sans">
-                        <Github className="w-3.5 h-3.5 mr-1.5" />
-                        <span>Connect GitHub</span>
-                      </Button>
-                    </a>
+                  {requiresReconnect ||
+                  errorType === 'token_expired' ||
+                  errorType === 'not_connected' ||
+                  errorType === 'token_missing' ||
+                  errorType === 'account_mismatch' ||
+                  errorType === 'permission_denied' ? (
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      onClick={handleReconnectGitHub}
+                      loading={isReconnecting}
+                      className="text-xs font-sans shadow-sm"
+                    >
+                      <Github className="w-3.5 h-3.5 mr-1.5" />
+                      <span>{isReconnecting ? 'Connecting to GitHub…' : 'Reconnect GitHub'}</span>
+                    </Button>
                   ) : (
                     <Button
                       variant="outline"

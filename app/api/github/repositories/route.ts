@@ -1,7 +1,9 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { requireAuth } from '@/lib/auth';
-import { getGitHubTokenForCurrentUser, fetchUserRepositories, GitHubApiError } from '@/lib/github/client';
+import { requireAuth, getOrCreateCurrentProfile } from '@/lib/auth';
+import { fetchUserRepositories, GitHubApiError } from '@/lib/github/client';
 import { ensureMarrowNodeSchema } from '@/lib/db/init';
+import { validateGitHubConnection } from '@/lib/github/connection-validator';
+import { prisma } from '@/lib/prisma';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,54 +19,83 @@ export async function GET(request: NextRequest) {
     // 0. Ensure schema exists
     await ensureMarrowNodeSchema();
 
-    // 1. Verify user session
-    await requireAuth();
+    // 1. Verify user session & resolve profile
+    const supabaseUser = await requireAuth();
+    const profile = await getOrCreateCurrentProfile(supabaseUser);
 
-    // 2. Retrieve user's stored GitHub token securely
-    const { token, githubUsername, connectionStatus } = await getGitHubTokenForCurrentUser();
-
-    if (connectionStatus === 'not_connected' || !githubUsername) {
-      return NextResponse.json(
-        {
-          error: 'GitHub is not connected. Please connect your GitHub account to continue.',
-          connectionStatus: 'not_connected',
-          repositories: [],
-        },
-        { status: 400 }
-      );
-    }
-
-    if (!token) {
-      return NextResponse.json(
-        {
-          error: 'GitHub access token is missing or expired. Please reconnect GitHub.',
-          connectionStatus: 'token_missing',
-          repositories: [],
-        },
-        { status: 401 }
-      );
-    }
-
-    // 3. Parse query parameters
+    // 2. Parse query parameters
     const { searchParams } = new URL(request.url);
     const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10));
     const perPage = Math.min(50, Math.max(10, parseInt(searchParams.get('per_page') || '25', 10)));
     const search = searchParams.get('search')?.trim().toLowerCase() || '';
     const filter = (searchParams.get('filter') || 'all').toLowerCase(); // all, owned, private, forks
 
-    // 4. Fetch repositories from GitHub
-    const rawRepos = await fetchUserRepositories(token, {
-      page,
-      perPage,
-      sort: 'updated',
-      direction: 'desc',
+    // 3. Canonical Connection & Token Validation
+    const validation = await validateGitHubConnection({
+      userId: profile.id,
+      forceFresh: page === 1,
     });
+
+    if (!validation.valid || !validation.token) {
+      let status = 401;
+      if (validation.state === 'NOT_CONNECTED') status = 400;
+      else if (validation.state === 'ACCOUNT_MISMATCH' || validation.state === 'PERMISSION_DENIED') status = 403;
+      else if (validation.state === 'RATE_LIMITED') status = 429;
+      else if (validation.state === 'GITHUB_UNAVAILABLE') status = 502;
+
+      return NextResponse.json(
+        {
+          error: validation.statusMessage,
+          state: validation.state,
+          connectionStatus: validation.state.toLowerCase(),
+          requiresReconnect: validation.requiresReconnect,
+          repositories: [],
+        },
+        { status }
+      );
+    }
+
+    const token = validation.token;
+    const effectiveUsername = validation.verifiedLogin || validation.githubUsername;
+
+    // 4. Fetch repositories from GitHub
+    let rawRepos;
+    try {
+      rawRepos = await fetchUserRepositories(token, {
+        page,
+        perPage,
+        sort: 'updated',
+        direction: 'desc',
+      });
+    } catch (fetchErr: any) {
+      if (fetchErr instanceof GitHubApiError && fetchErr.isAuthError) {
+        // Mark expired in database
+        prisma.gitHubConnection
+          .updateMany({
+            where: { userId: profile.id },
+            data: { connectionStatus: 'token_expired' },
+          })
+          .catch(() => {});
+
+        return NextResponse.json(
+          {
+            error: 'GitHub authentication expired or token revoked. Please reconnect GitHub.',
+            state: 'TOKEN_EXPIRED',
+            connectionStatus: 'token_expired',
+            requiresReconnect: true,
+            repositories: [],
+          },
+          { status: 401 }
+        );
+      }
+      throw fetchErr;
+    }
 
     // 5. Apply filters
     let filtered = rawRepos;
 
-    if (filter === 'owned' && githubUsername) {
-      filtered = filtered.filter((r) => r.owner.login.toLowerCase() === githubUsername.toLowerCase() && !r.fork);
+    if (filter === 'owned' && effectiveUsername) {
+      filtered = filtered.filter((r) => r.owner.login.toLowerCase() === effectiveUsername.toLowerCase() && !r.fork);
     } else if (filter === 'private') {
       filtered = filtered.filter((r) => r.private);
     } else if (filter === 'forks') {
@@ -100,12 +131,13 @@ export async function GET(request: NextRequest) {
     }));
 
     return NextResponse.json({
+      connected: true,
+      githubUsername: effectiveUsername,
       repositories,
       page,
       perPage,
       hasMore: rawRepos.length === perPage,
       totalCount: repositories.length,
-      githubUsername,
     });
   } catch (error: any) {
     if (error instanceof GitHubApiError) {
@@ -115,6 +147,7 @@ export async function GET(request: NextRequest) {
           connectionStatus: error.isAuthError ? 'token_expired' : 'connected',
           isRateLimit: error.isRateLimit,
           isAuthError: error.isAuthError,
+          requiresReconnect: error.isAuthError,
           repositories: [],
         },
         { status: error.statusCode }

@@ -79,6 +79,14 @@ export default function DashboardPage() {
     if (fileParam) {
       setFocusedFilePath(fileParam);
     }
+    const openRepoModal = params.get('openRepoSelector');
+    if (openRepoModal === 'true') {
+      setShowRepoModal(true);
+      // Clean up URL parameter cleanly without reloading
+      const url = new URL(window.location.href);
+      url.searchParams.delete('openRepoSelector');
+      window.history.replaceState({}, '', url.pathname + (url.search ? url.search : ''));
+    }
     const validViews: DashboardView[] = [
       'overview',
       'onboarding',

@@ -27,9 +27,15 @@ function AuthContent() {
       }
     }
 
-    // Check if session is already active
+    // Check if session is already active (unless reconnect was explicitly requested)
     const checkActiveSession = async () => {
       try {
+        const isReconnect = searchParams.get('reconnect') === 'true';
+        if (isReconnect) {
+          // Explicit reconnect requested: do not auto-redirect away
+          return;
+        }
+
         const supabase = createClient();
         const { data: { session } } = await supabase.auth.getSession();
         if (session) {
@@ -48,12 +54,16 @@ function AuthContent() {
     try {
       const supabase = createClient();
       const origin = getAppOrigin();
+      const rawNext = searchParams.get('next') || '/dashboard';
 
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'github',
         options: {
-          redirectTo: `${origin}/auth/callback?next=/dashboard`,
+          redirectTo: `${origin}/auth/callback?next=${encodeURIComponent(rawNext)}`,
           scopes: 'read:user repo',
+          queryParams: {
+            prompt: 'consent',
+          },
         },
       });
 
@@ -66,6 +76,8 @@ function AuthContent() {
       setIsSubmitting(false);
     }
   };
+
+  const isReconnect = searchParams.get('reconnect') === 'true';
 
   return (
     <div className="min-h-screen bg-ivory dark:bg-[#0E1310] flex flex-col justify-center items-center p-4 sm:p-6 bg-grid-pattern font-sans">
@@ -85,7 +97,7 @@ function AuthContent() {
           <CardHeader className="bg-surface-subtle dark:bg-[#1A221D] p-3.5 text-center border-b border-border dark:border-border-dark">
             <div className="w-full text-center">
               <span className="text-xs font-semibold text-text-primary dark:text-white uppercase tracking-wider font-sans">
-                Sign in to MarrowNode
+                {isReconnect ? 'Reconnect GitHub' : 'Sign in to MarrowNode'}
               </span>
             </div>
           </CardHeader>
@@ -101,10 +113,12 @@ function AuthContent() {
 
             <div className="text-center space-y-1 pb-1">
               <h2 className="text-sm font-semibold text-text-primary dark:text-white">
-                Developer Access
+                {isReconnect ? 'GitHub Re-authorization' : 'Developer Access'}
               </h2>
               <p className="text-xs text-text-secondary dark:text-[#A7AFA9] leading-relaxed">
-                Connect with GitHub to access your repositories, codebase intelligence, and architectural context.
+                {isReconnect
+                  ? 'Re-authorize your GitHub account with repository permissions to access your repositories.'
+                  : 'Connect with GitHub to access your repositories, codebase intelligence, and architectural context.'}
               </p>
             </div>
 
@@ -117,7 +131,7 @@ function AuthContent() {
               className="w-full h-10 text-xs font-medium flex items-center justify-center gap-2 font-sans"
             >
               <Github className="w-4 h-4" />
-              <span>{isSubmitting ? 'Connecting to GitHub…' : 'Continue with GitHub'}</span>
+              <span>{isSubmitting ? 'Connecting to GitHub…' : isReconnect ? 'Reconnect GitHub' : 'Continue with GitHub'}</span>
             </Button>
 
             {/* Security Guarantee */}

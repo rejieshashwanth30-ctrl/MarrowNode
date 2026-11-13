@@ -15,18 +15,23 @@ export const dynamic = 'force-dynamic';
  * Prevents cross-tenant leaks by binding the project directly to the authenticated Neon user.
  */
 export async function POST(request: NextRequest) {
+  let profile: any = null;
   try {
     await ensureMarrowNodeSchema();
 
     // 1. Verify user authentication
     await requireAuth();
-    const profile = await getOrCreateCurrentProfile();
+    profile = await getOrCreateCurrentProfile();
 
     // 2. Retrieve GitHub token
-    const { token } = await getGitHubTokenForCurrentUser();
-    if (!token) {
+    const { token, connectionStatus } = await getGitHubTokenForCurrentUser();
+    if (!token || connectionStatus === 'token_expired') {
       return NextResponse.json(
-        { error: 'GitHub is not connected. Please connect your GitHub account to continue.' },
+        {
+          error: 'GitHub authentication expired or token revoked. Please reconnect GitHub.',
+          connectionStatus: 'token_expired',
+          requiresReconnect: true,
+        },
         { status: 401 }
       );
     }
@@ -127,8 +132,20 @@ export async function POST(request: NextRequest) {
     });
   } catch (error: any) {
     if (error instanceof GitHubApiError) {
+      if (error.isAuthError && profile?.id) {
+        prisma.gitHubConnection
+          .updateMany({
+            where: { userId: profile.id },
+            data: { connectionStatus: 'token_expired' },
+          })
+          .catch(() => {});
+      }
       return NextResponse.json(
-        { error: error.message },
+        {
+          error: error.message,
+          connectionStatus: error.isAuthError ? 'token_expired' : 'connected',
+          requiresReconnect: error.isAuthError,
+        },
         { status: error.statusCode }
       );
     }

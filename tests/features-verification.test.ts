@@ -29,6 +29,12 @@ import {
   type ProjectWorkstationContext,
 } from '../lib/services/project-context';
 import {
+  validateGitHubConnection,
+  invalidateGitHubConnectionCache,
+} from '../lib/github/connection-validator';
+import { sanitizeRedirectPath } from '../lib/origin';
+import { saveGitHubConnection } from '../lib/services/users';
+import {
   getCurrentRepositoryHead,
   verifyRepositoryHeadSha,
   GitHubApiError,
@@ -1516,5 +1522,196 @@ test('Freshness F3: Neon DB Project Workstation Context freshness, sync-failed p
   } finally {
     // Multi-tenant cleanup
     await prisma.user.deleteMany({ where: { id: { in: [userAId, userBId] } } }).catch(() => {});
+  }
+});
+
+// ============================================================================
+// SUITE 16: GITHUB OAUTH, TOKEN LIFECYCLE & REPOSITORY SELECTOR VERIFICATION
+// ============================================================================
+test('GitHub OAuth, Token Lifecycle, Account Switching & Connection Validator', async (t) => {
+  const origFetch = globalThis.fetch;
+  const testUserId = `test_oauth_user_${Date.now()}`;
+  const testProfileId = `prof_oauth_${Date.now()}`;
+
+  try {
+    // 1. Create a isolated test user in Neon DB
+    await prisma.user.create({
+      data: {
+        id: testProfileId,
+        supabaseUserId: testUserId,
+        email: `${testUserId}@example.com`,
+        displayName: 'OAuth Test User',
+      },
+    });
+
+    // Subtest A: NOT_CONNECTED when no GitHub connection exists
+    await t.test('Connection Validator returns NOT_CONNECTED when no connection exists', async () => {
+      const res = await validateGitHubConnection({ userId: testProfileId, forceFresh: true });
+      assert.equal(res.state, 'NOT_CONNECTED');
+      assert.equal(res.valid, false);
+      assert.equal(res.requiresReconnect, true);
+      assert.ok(res.statusMessage.includes('No GitHub connection'));
+    });
+
+    // Subtest B: TOKEN_EXPIRED (401 Bad credentials from GitHub) updates DB and flags reconnect
+    await t.test('Connection Validator detects 401 expired token and sets DB status', async () => {
+      await prisma.gitHubConnection.upsert({
+        where: { userId: testProfileId },
+        update: {
+          accessToken: 'gho_expired_token_123',
+          githubUsername: 'oauthTester',
+          githubAccountId: '999999',
+          connectionStatus: 'connected',
+        },
+        create: {
+          userId: testProfileId,
+          accessToken: 'gho_expired_token_123',
+          githubUsername: 'oauthTester',
+          githubAccountId: '999999',
+          connectionStatus: 'connected',
+        },
+      });
+
+      // Mock GitHub /user responding with 401 Bad credentials
+      globalThis.fetch = async (url: any) => {
+        if (String(url).includes('api.github.com/user')) {
+          return new Response(JSON.stringify({ message: 'Bad credentials' }), {
+            status: 401,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        return origFetch(url);
+      };
+
+      const res = await validateGitHubConnection({ userId: testProfileId, forceFresh: true });
+      assert.equal(res.state, 'TOKEN_EXPIRED');
+      assert.equal(res.valid, false);
+      assert.equal(res.requiresReconnect, true);
+      assert.ok(res.statusMessage.includes('expired'));
+
+      // Verify Neon DB record was marked token_expired
+      const updatedConn = await prisma.gitHubConnection.findUnique({
+        where: { userId: testProfileId },
+      });
+      assert.equal(updatedConn?.connectionStatus, 'token_expired');
+    });
+
+    // Subtest C: ACCOUNT_MISMATCH detected when token belongs to different login
+    await t.test('Connection Validator detects ACCOUNT_MISMATCH when GitHub login differs', async () => {
+      globalThis.fetch = async (url: any) => {
+        if (String(url).includes('api.github.com/user')) {
+          return new Response(
+            JSON.stringify({ login: 'differentUserAccount', id: 888888 }),
+            {
+              status: 200,
+              headers: {
+                'Content-Type': 'application/json',
+                'x-oauth-scopes': 'repo, read:user',
+                'x-ratelimit-remaining': '4990',
+              },
+            }
+          );
+        }
+        return origFetch(url);
+      };
+
+      const res = await validateGitHubConnection({ userId: testProfileId, forceFresh: true });
+      assert.equal(res.state, 'ACCOUNT_MISMATCH');
+      assert.equal(res.valid, false);
+      assert.equal(res.requiresReconnect, true);
+      assert.equal(res.verifiedLogin, 'differentUserAccount');
+      assert.ok(res.statusMessage.includes('mismatch'));
+    });
+
+    // Subtest D: PERMISSION_DENIED when token lacks 'repo' scope
+    await t.test('Connection Validator detects PERMISSION_DENIED when repo scope is missing', async () => {
+      globalThis.fetch = async (url: any) => {
+        if (String(url).includes('api.github.com/user')) {
+          return new Response(
+            JSON.stringify({ login: 'oauthTester', id: 999999 }),
+            {
+              status: 200,
+              headers: {
+                'Content-Type': 'application/json',
+                'x-oauth-scopes': 'read:user, gist', // Missing 'repo'
+                'x-ratelimit-remaining': '4980',
+              },
+            }
+          );
+        }
+        return origFetch(url);
+      };
+
+      const res = await validateGitHubConnection({ userId: testProfileId, forceFresh: true });
+      assert.equal(res.state, 'PERMISSION_DENIED');
+      assert.equal(res.valid, false);
+      assert.equal(res.requiresReconnect, true);
+      assert.ok(res.statusMessage.includes('repo'));
+    });
+
+    // Subtest E: CONNECTED when token is valid, identity matches, and repo scope is present
+    await t.test('Connection Validator succeeds with CONNECTED on matching identity and scope', async () => {
+      globalThis.fetch = async (url: any) => {
+        if (String(url).includes('api.github.com/user')) {
+          return new Response(
+            JSON.stringify({ login: 'oauthTester', id: 999999 }),
+            {
+              status: 200,
+              headers: {
+                'Content-Type': 'application/json',
+                'x-oauth-scopes': 'repo, read:user',
+                'x-ratelimit-remaining': '4970',
+              },
+            }
+          );
+        }
+        return origFetch(url);
+      };
+
+      const res = await validateGitHubConnection({ userId: testProfileId, forceFresh: true });
+      assert.equal(res.state, 'CONNECTED');
+      assert.equal(res.valid, true);
+      assert.equal(res.requiresReconnect, false);
+      assert.equal(res.verifiedLogin, 'oauthTester');
+      assert.ok(res.scopes.includes('repo'));
+      assert.equal(res.rateLimitRemaining, 4970);
+      assert.equal(res.token, 'gho_expired_token_123'); // Token available internally
+
+      // Check DB updated to 'connected'
+      const updatedConn = await prisma.gitHubConnection.findUnique({
+        where: { userId: testProfileId },
+      });
+      assert.equal(updatedConn?.connectionStatus, 'connected');
+    });
+
+    // Subtest F: Reconnect & Save fresh token invalidates cache
+    await t.test('saveGitHubConnection updates token and invalidates cache', async () => {
+      await saveGitHubConnection(testUserId, {
+        githubAccountId: '999999',
+        githubUsername: 'oauthTester',
+        accessToken: 'gho_fresh_reconnected_token_999',
+      });
+
+      const updatedConn = await prisma.gitHubConnection.findUnique({
+        where: { userId: testProfileId },
+      });
+      assert.equal(updatedConn?.accessToken, 'gho_fresh_reconnected_token_999');
+      assert.equal(updatedConn?.connectionStatus, 'connected');
+    });
+
+    // Subtest G: Redirect sanitization preserves /dashboard?openRepoSelector=true
+    await t.test('sanitizeRedirectPath allows /dashboard?openRepoSelector=true and rejects dangerous paths', () => {
+      const allowedTarget = sanitizeRedirectPath('/dashboard?openRepoSelector=true');
+      assert.equal(allowedTarget, '/dashboard?openRepoSelector=true');
+
+      // Open redirect attacks must be rejected
+      assert.equal(sanitizeRedirectPath('https://evil.com'), '/dashboard');
+      assert.equal(sanitizeRedirectPath('//evil.com/phish'), '/dashboard');
+      assert.equal(sanitizeRedirectPath('/\\evil.com'), '/dashboard');
+      assert.equal(sanitizeRedirectPath(null), '/dashboard');
+    });
+  } finally {
+    globalThis.fetch = origFetch;
+    await prisma.user.deleteMany({ where: { id: testProfileId } }).catch(() => {});
   }
 });

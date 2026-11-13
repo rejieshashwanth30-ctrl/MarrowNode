@@ -3,6 +3,7 @@ import { createServerClient } from '@supabase/ssr';
 import { getSupabaseUrl, getSupabasePublishableKey } from '@/utils/supabase/config';
 import { getOrCreateCurrentProfile } from '@/lib/auth';
 import { saveGitHubConnection } from '@/lib/services/users';
+import { validateGitHubConnection } from '@/lib/github/connection-validator';
 import { getAppOrigin, sanitizeRedirectPath } from '@/lib/origin';
 
 export const dynamic = 'force-dynamic';
@@ -115,6 +116,15 @@ export async function GET(request: NextRequest) {
               avatarUrl: data.user.user_metadata?.avatar_url || null,
               accessToken: data.session?.provider_token || null,
             });
+
+            // Validate the freshly captured token immediately
+            if (data.session?.provider_token) {
+              await validateGitHubConnection({
+                userId: data.user.id,
+                forceFresh: true,
+              }).catch(() => {});
+            }
+
             console.log(
               '[MarrowNode Auth Callback] GitHub connection recorded for user:',
               data.user.id,

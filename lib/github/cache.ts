@@ -81,6 +81,25 @@ class GitHubApiCache {
   }
 
   /**
+   * Delete a specific cache key.
+   */
+  public delete(key: string): boolean {
+    return this.cache.delete(key);
+  }
+
+  /**
+   * Delete all cache entries whose key starts with a specific prefix.
+   */
+  public deletePrefix(prefix: string): void {
+    const low = prefix.toLowerCase();
+    for (const key of Array.from(this.cache.keys())) {
+      if (key.toLowerCase().startsWith(low)) {
+        this.cache.delete(key);
+      }
+    }
+  }
+
+  /**
    * Invalidate all cached data for a specific repository (e.g., when new commits are detected).
    */
   public invalidateRepo(owner: string, repo: string): void {
