@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { requireAuth, getOrCreateCurrentProfile } from '@/lib/auth';
+import { requireAuth, getOrCreateCurrentProfile, AuthError } from '@/lib/auth';
 import { fetchUserRepositories, GitHubApiError } from '@/lib/github/client';
 import { ensureMarrowNodeSchema } from '@/lib/db/init';
 import { validateGitHubConnection } from '@/lib/github/connection-validator';
@@ -140,6 +140,18 @@ export async function GET(request: NextRequest) {
       totalCount: repositories.length,
     });
   } catch (error: any) {
+    if (error instanceof AuthError || error?.name === 'AuthError') {
+      return NextResponse.json(
+        {
+          error: error.message,
+          connectionStatus: 'unauthenticated',
+          requiresReconnect: true,
+          repositories: [],
+        },
+        { status: error.statusCode || 401 }
+      );
+    }
+
     if (error instanceof GitHubApiError) {
       return NextResponse.json(
         {

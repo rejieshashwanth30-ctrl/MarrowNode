@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { requireAuth, getOrCreateCurrentProfile } from '@/lib/auth';
+import { requireAuth, getOrCreateCurrentProfile, AuthError } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { getGitHubTokenForCurrentUser, fetchRepositoryDetails, GitHubApiError } from '@/lib/github/client';
 import { upsertRepository } from '@/lib/services/repositories';
@@ -131,6 +131,17 @@ export async function POST(request: NextRequest) {
       repository,
     });
   } catch (error: any) {
+    if (error instanceof AuthError || error?.name === 'AuthError') {
+      return NextResponse.json(
+        {
+          error: error.message,
+          connectionStatus: 'unauthenticated',
+          requiresReconnect: true,
+        },
+        { status: error.statusCode || 401 }
+      );
+    }
+
     if (error instanceof GitHubApiError) {
       if (error.isAuthError && profile?.id) {
         prisma.gitHubConnection
