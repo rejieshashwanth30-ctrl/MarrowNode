@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Sidebar, DashboardView } from '@/components/Sidebar';
@@ -111,6 +111,41 @@ export default function DashboardPage() {
     setActiveView(view);
   };
 
+  const freshnessAbortRef = useRef<AbortController | null>(null);
+
+  const triggerBackgroundFreshness = (projectId: string) => {
+    if (freshnessAbortRef.current) {
+      freshnessAbortRef.current.abort();
+    }
+    const ac = new AbortController();
+    freshnessAbortRef.current = ac;
+
+    fetch(`/api/projects/${projectId}/freshness`, { signal: ac.signal })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!data || !data.success) return;
+        setProjectContext((prev: any) => {
+          if (!prev || !prev.latestAnalysis || prev.project.id !== projectId) return prev;
+          return {
+            ...prev,
+            latestAnalysis: {
+              ...prev.latestAnalysis,
+              freshness: data.freshness,
+              freshnessVerified: data.freshnessVerified,
+              freshnessMessage: data.freshnessMessage,
+              liveHeadSha: data.liveHeadSha,
+              providerStatus: data.providerStatus,
+            },
+          };
+        });
+      })
+      .catch((err) => {
+        if (err.name !== 'AbortError') {
+          console.error('[Freshness check error]:', err);
+        }
+      });
+  };
+
   const fetchProjectContext = async (projectId: string) => {
     try {
       setIsLoadingContext(true);
@@ -118,6 +153,7 @@ export default function DashboardPage() {
       if (res.ok) {
         const data = await res.json();
         setProjectContext(data.context);
+        triggerBackgroundFreshness(projectId);
       }
     } catch (err) {
       console.error('[Dashboard fetch context error]:', err);
@@ -128,39 +164,42 @@ export default function DashboardPage() {
 
   const fetchDashboardData = async (targetProjectId?: string) => {
     try {
-      // 1. Fetch user profile, active project, and all owned projects in parallel
-      const [userRes, activeRes, projectsRes] = await Promise.all([
-        fetch('/api/user/me'),
-        fetch('/api/projects/active'),
-        fetch('/api/projects'),
-      ]);
+      // 1. Fetch unified active workstation data (user, active project context, project list) in one request
+      const activeRes = await fetch('/api/projects/active');
 
-      if (userRes.status === 401) {
+      if (activeRes.status === 401) {
         router.push('/auth');
         return;
       }
 
-      if (userRes.ok) {
-        const userData = await userRes.json();
-        setUser(userData.user);
-      }
-
-      if (projectsRes.ok) {
-        const projectsData = await projectsRes.json();
-        const projs = projectsData.projects || [];
-        setProjects(projs);
-      }
-
       if (activeRes.ok) {
         const activeData = await activeRes.json();
+        if (activeData.user) setUser(activeData.user);
+        if (activeData.projects) setProjects(activeData.projects);
+
         if (activeData.hasActiveProject && activeData.project) {
           const activeProjId = targetProjectId || activeData.project.id;
           setSelectedProjectId(activeProjId);
           if (activeData.context && activeProjId === activeData.project.id) {
             setProjectContext(activeData.context);
+            triggerBackgroundFreshness(activeProjId);
           } else {
             await fetchProjectContext(activeProjId);
           }
+        }
+      } else {
+        // Fallback: fetch independently if unified endpoint returned error
+        const [userRes, projectsRes] = await Promise.all([
+          fetch('/api/user/me'),
+          fetch('/api/projects'),
+        ]);
+        if (userRes.ok) {
+          const userData = await userRes.json();
+          setUser(userData.user);
+        }
+        if (projectsRes.ok) {
+          const projectsData = await projectsRes.json();
+          setProjects(projectsData.projects || []);
         }
       }
     } catch (err) {
@@ -194,6 +233,7 @@ export default function DashboardPage() {
       if (res.ok) {
         const data = await res.json();
         setProjectContext(data.context);
+        triggerBackgroundFreshness(projectId);
       } else {
         await fetchProjectContext(projectId);
       }
@@ -906,7 +946,7 @@ export default function DashboardPage() {
 
             {/* VIEW 5: ASK PROJECT */}
             {activeView === 'ask' && (
-              <div className="animate-in fade-in-50 duration-150">
+              <div className="animate-in fade-in-50 duration-150 pb-28 sm:pb-8">
                 <AskProjectInterface
                   key={selectedProject?.id || 'no-proj-ask'}
                   projectId={selectedProject?.id}

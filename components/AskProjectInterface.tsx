@@ -18,6 +18,7 @@ import {
   GitCommit,
   ExternalLink,
   Loader2,
+  ArrowRight,
 } from 'lucide-react';
 
 interface AskProjectInterfaceProps {
@@ -229,37 +230,38 @@ export function AskProjectInterface({
         </div>
       </CardHeader>
 
-      <CardContent className="p-3 sm:p-6 flex-1 flex flex-col justify-between min-h-[280px] sm:min-h-[460px]">
+      <CardContent className="p-3 sm:p-5 flex-1 flex flex-col justify-between min-h-[300px] sm:min-h-[460px]">
         {/* Messages Scroll Area */}
-        <div className="flex-1 overflow-y-auto space-y-2.5 sm:space-y-4 mb-2.5 sm:mb-4 pr-0.5 min-w-0">
+        <div className="flex-1 overflow-y-auto space-y-3 sm:space-y-4 mb-3 sm:mb-4 pr-0.5 min-w-0">
           {messages.length === 0 ? (
-            <div className="py-1 sm:py-6 text-center space-y-2 sm:space-y-4 max-w-lg mx-auto">
-              <div className="w-7 h-7 sm:w-10 sm:h-10 rounded-full bg-forest/10 border border-forest/20 flex items-center justify-center text-forest mx-auto dark:text-[#9AC6A7]">
-                <ShieldCheck className="w-3.5 h-3.5 sm:w-5 sm:h-5" />
+            <div className="py-2 sm:py-6 text-center space-y-3 sm:space-y-4 max-w-lg mx-auto">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-forest/10 border border-forest/20 flex items-center justify-center text-forest mx-auto dark:text-[#9AC6A7]">
+                <ShieldCheck className="w-4 h-4 sm:w-5 sm:h-5" />
               </div>
-              <div className="space-y-0.5 sm:space-y-1">
+              <div className="space-y-1">
                 <h4 className="text-sm sm:text-base font-semibold text-text-primary dark:text-white">
                   Ask questions about your project
                 </h4>
-                <p className="text-xs text-text-muted leading-snug sm:leading-relaxed">
+                <p className="text-xs text-text-muted leading-relaxed max-w-sm mx-auto">
                   Ask about files, packages, structure, or history. Answers cite real files in your codebase.
                 </p>
               </div>
 
               {/* Suggested Questions */}
-              <div className="pt-0.5 text-left space-y-1.5">
-                <div className="text-[11px] uppercase font-semibold text-text-muted">
+              <div className="pt-1 text-left space-y-2">
+                <div className="text-[10px] tracking-wider uppercase font-semibold text-text-muted px-0.5">
                   Try asking
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 sm:gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {SUGGESTED_QUERIES.map((sq) => (
                     <button
                       key={sq}
                       type="button"
                       onClick={() => handleAsk(sq)}
-                      className="w-full px-2.5 py-1.5 sm:p-2.5 text-left text-xs leading-snug rounded border border-border bg-surface hover:bg-surface-subtle text-text-primary dark:bg-[#1B251E] dark:border-[#324237] dark:text-[#EEF2ED] dark:hover:bg-[#233028] transition-colors font-medium break-words"
+                      className="w-full h-11 sm:h-10 px-3.5 py-2 text-left text-xs leading-snug rounded-lg border border-border bg-surface hover:bg-surface-subtle text-text-primary dark:bg-[#1B251E] dark:border-[#324237] dark:text-[#EEF2ED] dark:hover:bg-[#233028] transition-colors font-medium flex items-center justify-between group shadow-2xs"
                     >
-                      {sq}
+                      <span className="truncate pr-2">{sq}</span>
+                      <ArrowRight className="w-3.5 h-3.5 text-text-muted group-hover:text-forest dark:group-hover:text-[#9AC6A7] transition-colors shrink-0" />
                     </button>
                   ))}
                 </div>
@@ -276,41 +278,41 @@ export function AskProjectInterface({
                 </div>
 
                 {msg.role === 'user' ? (
-                  <div className="max-w-full sm:max-w-xl p-3 rounded-lg bg-charcoal text-white dark:bg-forest text-xs sm:text-[13px] leading-relaxed font-sans break-words">
+                  <div className="max-w-[88%] sm:max-w-xl p-3 rounded-2xl rounded-tr-xs bg-charcoal text-white dark:bg-forest text-xs sm:text-[13px] leading-relaxed font-sans break-words shadow-2xs">
                     {msg.content}
                   </div>
                 ) : (
-                  <div className="max-w-full sm:max-w-2xl w-full p-3 sm:p-4 rounded-lg bg-surface-subtle dark:bg-[#18201B] border border-border dark:border-[#2E3C33] space-y-2.5 sm:space-y-3 text-xs sm:text-[13px] leading-relaxed font-sans min-w-0 break-words">
+                  <div className="max-w-full sm:max-w-2xl w-full p-3.5 sm:p-4 rounded-2xl rounded-tl-xs bg-surface-subtle dark:bg-[#18201B] border border-border dark:border-[#2E3C33] space-y-2.5 sm:space-y-3 text-xs sm:text-[13px] leading-relaxed font-sans min-w-0 break-words shadow-2xs">
                     {msg.fact && (
-                      <div className="p-2.5 rounded bg-forest/10 border border-forest/20 text-text-primary dark:text-[#F2F4F0] space-y-1">
+                      <div className="p-2.5 rounded-lg bg-forest/10 border border-forest/20 text-text-primary dark:text-[#F2F4F0] space-y-1">
                         <div className="text-[10px] font-bold uppercase tracking-wider text-forest dark:text-[#9AC6A7]">
                           CONFIRMED FROM YOUR PROJECT
                         </div>
-                        <div className="whitespace-pre-line break-words">{msg.fact}</div>
+                        <div className="whitespace-pre-line break-words leading-relaxed">{msg.fact}</div>
                       </div>
                     )}
 
                     {msg.inference && (
-                      <div className="p-2.5 rounded bg-copper/10 border border-copper/20 text-text-primary dark:text-[#F2F4F0] space-y-1">
+                      <div className="p-2.5 rounded-lg bg-copper/10 border border-copper/20 text-text-primary dark:text-[#F2F4F0] space-y-1">
                         <div className="text-[10px] font-bold uppercase tracking-wider text-copper dark:text-[#E69E7B]">
                           BASED ON PROJECT STRUCTURE
                         </div>
-                        <div className="break-words">{msg.inference}</div>
+                        <div className="break-words leading-relaxed">{msg.inference}</div>
                       </div>
                     )}
 
                     {msg.unknown && (
-                      <div className="p-2.5 rounded bg-surface border border-border dark:bg-[#131915] dark:border-[#2C3930] text-text-secondary dark:text-[#C6CDC7] space-y-1">
+                      <div className="p-2.5 rounded-lg bg-surface border border-border dark:bg-[#131915] dark:border-[#2C3930] text-text-secondary dark:text-[#C6CDC7] space-y-1">
                         <div className="text-[10px] font-bold uppercase tracking-wider text-text-muted">
                           NOT FOUND IN THE PROJECT
                         </div>
-                        <div className="break-words">{msg.unknown}</div>
+                        <div className="break-words leading-relaxed">{msg.unknown}</div>
                       </div>
                     )}
 
                     {/* Fallback plain content if no structured sections */}
                     {!msg.fact && !msg.inference && !msg.unknown && (
-                      <div className="text-text-primary dark:text-[#F2F4F0] break-words">{msg.content}</div>
+                      <div className="text-text-primary dark:text-[#F2F4F0] break-words leading-relaxed">{msg.content}</div>
                     )}
 
                     {/* Citations */}
@@ -340,21 +342,21 @@ export function AskProjectInterface({
           )}
 
           {loading && (
-            <div className="flex items-center gap-2 text-xs text-text-muted p-2">
+            <div className="flex items-center gap-2 text-xs text-text-muted p-2 rounded-lg bg-surface-subtle dark:bg-[#1A221D] border border-border dark:border-[#324237]">
               <Loader2 className="w-4 h-4 text-forest animate-spin shrink-0" />
-              <span>Searching your project…</span>
+              <span>Thinking… searching your project evidence</span>
             </div>
           )}
         </div>
 
-        {/* Input Bar */}
-        <div className="border-t border-border pt-3 sm:pt-4 dark:border-[#2C3930]">
+        {/* Input Bar — Compact, premium, responsive */}
+        <div className="border-t border-border pt-2.5 sm:pt-3.5 dark:border-[#2C3930]">
           <form
             onSubmit={(e) => {
               e.preventDefault();
               handleAsk();
             }}
-            className="flex flex-col min-[380px]:flex-row gap-2"
+            className="flex flex-col min-[480px]:flex-row gap-2 sm:gap-2.5"
           >
             <input
               type="text"
@@ -363,14 +365,14 @@ export function AskProjectInterface({
               placeholder="Ask about files, packages, or history…"
               aria-label="Ask a question about your project"
               disabled={loading}
-              className="flex-1 min-w-0 h-10 sm:h-9 px-3 bg-surface border border-border rounded text-sm sm:text-xs font-sans text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-forest dark:bg-[#1A221D] dark:border-[#324237] dark:text-[#F2F4F0] dark:placeholder:text-[#98A49A]"
+              className="w-full flex-1 min-w-0 h-11 sm:h-10 px-3.5 bg-surface border border-border rounded-lg text-xs sm:text-xs font-sans text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-forest dark:bg-[#1A221D] dark:border-[#324237] dark:text-[#F2F4F0] dark:placeholder:text-[#98A49A] transition-colors"
             />
             <Button
               type="submit"
               variant="primary"
               size="sm"
               disabled={!query.trim() || loading}
-              className="h-10 sm:h-9 w-full min-[380px]:w-auto text-xs sm:text-sm font-sans font-medium gap-1.5 px-4 shrink-0"
+              className="h-11 sm:h-10 w-full min-[480px]:w-auto rounded-lg text-xs font-sans font-medium gap-1.5 px-5 shrink-0 bg-forest hover:bg-forest/90 text-white dark:bg-forest dark:hover:bg-forest/90 border border-forest/20 shadow-2xs"
             >
               <Send className="w-3.5 h-3.5 shrink-0" />
               <span>Ask</span>

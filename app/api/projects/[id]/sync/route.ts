@@ -14,12 +14,45 @@ import {
   processAnalysisStep,
   STEP_TIME_BUDGET_MS,
 } from '@/lib/github/analysis';
-import { invalidateProjectContextCache } from '@/lib/services/project-context';
+import { invalidateProjectContextCache, verifyProjectFreshness } from '@/lib/services/project-context';
 import { invalidateOnboardingCache } from '@/lib/services/onboarding';
 import { prisma } from '@/lib/prisma';
 import { getSafeErrorResponse } from '@/lib/errors';
 
 export const dynamic = 'force-dynamic';
+
+/**
+ * GET /api/projects/[id]/sync
+ * Lightweight non-blocking freshness check handler.
+ */
+export async function GET(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    await requireAuth();
+    const profile = await getOrCreateCurrentProfile();
+    const forceFresh = request.nextUrl.searchParams.get('fresh') === 'true';
+
+    const result = await verifyProjectFreshness({
+      projectId: params.id,
+      profileId: profile.id,
+      forceFresh,
+    });
+
+    return NextResponse.json({
+      success: true,
+      ...result,
+    });
+  } catch (error: any) {
+    const safe = getSafeErrorResponse(
+      error,
+      'Failed to check repository freshness.',
+      `sync.GET projectId=${params.id}`
+    );
+    return NextResponse.json({ error: safe.message }, { status: safe.statusCode });
+  }
+}
 
 /**
  * POST /api/projects/[id]/sync

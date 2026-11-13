@@ -80,7 +80,7 @@ export interface ProjectWorkstationContext {
   latestAnalysis: {
     id: string;
     status: string;
-    freshness: 'CURRENT' | 'STALE' | 'ANALYZING' | 'PARTIAL' | 'FAILED' | 'UNVERIFIED' | 'SYNC_FAILED';
+    freshness: 'CURRENT' | 'STALE' | 'ANALYZING' | 'PARTIAL' | 'FAILED' | 'UNVERIFIED' | 'SYNC_FAILED' | 'CHECKING';
     freshnessVerified?: boolean;
     freshnessMessage?: string;
     liveHeadSha?: string | null;
@@ -219,7 +219,7 @@ export async function resolveActiveProjectContext(
  */
 export async function getProjectWorkstationContext(
   projectId: string,
-  options: { forceFresh?: boolean; profile?: any } = {}
+  options: { forceFresh?: boolean; checkFreshnessLive?: boolean; profile?: any } = {}
 ): Promise<ProjectWorkstationContext> {
   const profile = options.profile || (await getOrCreateCurrentProfile());
 
@@ -606,7 +606,10 @@ export async function getProjectWorkstationContext(
   let freshnessVerified = false;
   let headResult: RepositoryHeadResult | null = null;
 
+  const shouldCheckHeadLive = options.forceFresh || options.checkFreshnessLive !== false;
+
   if (
+    shouldCheckHeadLive &&
     project.githubOwner &&
     project.githubRepositoryName &&
     (latestAnalysis?.status === 'COMPLETED' || latestAnalysis?.status === 'PARTIALLY_COMPLETED')
@@ -627,7 +630,7 @@ export async function getProjectWorkstationContext(
     freshnessVerified = headResult.verified;
   }
 
-  let freshness: 'CURRENT' | 'STALE' | 'ANALYZING' | 'PARTIAL' | 'FAILED' | 'UNVERIFIED' | 'SYNC_FAILED' = 'CURRENT';
+  let freshness: 'CURRENT' | 'STALE' | 'ANALYZING' | 'PARTIAL' | 'FAILED' | 'UNVERIFIED' | 'SYNC_FAILED' | 'CHECKING' = 'CURRENT';
   let freshnessMessage = 'Repository analysis matches the latest verified GitHub commit.';
 
   if (!latestAnalysis) {
@@ -647,6 +650,11 @@ export async function getProjectWorkstationContext(
   } else if (!completedAnalysis && rawLatestAnalysis?.status === 'FAILED') {
     freshness = 'FAILED';
     freshnessMessage = 'The latest analysis attempt failed.';
+  } else if (!shouldCheckHeadLive) {
+    // Non-blocking initial context resolution: report CHECKING so the UI shows smooth checking state without blocking
+    freshness = 'CHECKING';
+    freshnessVerified = false;
+    freshnessMessage = 'Verifying repository freshness…';
   } else if (
     freshnessVerified &&
     liveHeadSha &&
@@ -785,4 +793,178 @@ export async function getProjectWorkstationContext(
   });
 
   return resolvedContext;
+}
+
+/**
+ * Asynchronously verifies repository freshness against live GitHub HEAD without reloading full context.
+ * Patches in-memory workstation context cache upon completion so future context reads have verified freshness.
+ */
+export async function verifyProjectFreshness(params: {
+  projectId: string;
+  profileId?: string;
+  forceFresh?: boolean;
+}): Promise<{
+  freshness: 'CURRENT' | 'STALE' | 'ANALYZING' | 'PARTIAL' | 'FAILED' | 'UNVERIFIED' | 'SYNC_FAILED';
+  freshnessVerified: boolean;
+  freshnessMessage: string;
+  liveHeadSha: string | null;
+  analyzedSha: string | null;
+  upToDate: boolean;
+  providerStatus?: string;
+}> {
+  const profile = params.profileId
+    ? { id: params.profileId }
+    : await getOrCreateCurrentProfile();
+
+  const project = await prisma.project.findFirst({
+    where: {
+      id: params.projectId,
+      ownerId: profile.id,
+    },
+    include: {
+      repository: true,
+      analyses: {
+        orderBy: { createdAt: 'desc' },
+        take: 3,
+      },
+    },
+  });
+
+  if (!project) {
+    throw new AuthError('Project not found or access denied', 404);
+  }
+
+  const rawLatestAnalysis = project.analyses[0] || null;
+  const completedAnalysis =
+    project.analyses.find(
+      (a) => a.status === 'COMPLETED' || a.status === 'PARTIALLY_COMPLETED'
+    ) || null;
+  const latestAnalysis = completedAnalysis || rawLatestAnalysis;
+
+  if (!latestAnalysis) {
+    return {
+      freshness: 'STALE',
+      freshnessVerified: true,
+      freshnessMessage: 'Repository has not been analyzed yet.',
+      liveHeadSha: null,
+      analyzedSha: null,
+      upToDate: false,
+    };
+  }
+
+  if (
+    rawLatestAnalysis?.status === 'RUNNING' ||
+    rawLatestAnalysis?.status === 'PENDING' ||
+    rawLatestAnalysis?.status === 'QUEUED'
+  ) {
+    return {
+      freshness: 'ANALYZING',
+      freshnessVerified: true,
+      freshnessMessage: `Analyzing repository (${rawLatestAnalysis.processedSourceFiles ?? 0}/${rawLatestAnalysis.totalSourceFiles ?? 0} source files).`,
+      liveHeadSha: null,
+      analyzedSha: latestAnalysis.commitSha,
+      upToDate: false,
+    };
+  }
+
+  if (
+    completedAnalysis &&
+    rawLatestAnalysis &&
+    rawLatestAnalysis.id !== completedAnalysis.id &&
+    rawLatestAnalysis.status === 'FAILED'
+  ) {
+    return {
+      freshness: 'SYNC_FAILED',
+      freshnessVerified: true,
+      freshnessMessage: 'Sync failed — showing the last successfully analyzed version.',
+      liveHeadSha: null,
+      analyzedSha: completedAnalysis.commitSha,
+      upToDate: false,
+    };
+  }
+
+  if (!completedAnalysis && rawLatestAnalysis?.status === 'FAILED') {
+    return {
+      freshness: 'FAILED',
+      freshnessVerified: true,
+      freshnessMessage: 'The latest analysis attempt failed.',
+      liveHeadSha: null,
+      analyzedSha: null,
+      upToDate: false,
+    };
+  }
+
+  let liveHeadSha: string | null = null;
+  let freshnessVerified = false;
+  let headResult: RepositoryHeadResult | null = null;
+
+  if (project.githubOwner && project.githubRepositoryName) {
+    const ownerToken = await getServerGitHubTokenForUser(profile.id).catch(() => null);
+    headResult = await getCurrentRepositoryHead({
+      token: ownerToken,
+      owner: project.githubOwner,
+      repo: project.githubRepositoryName,
+      branch: latestAnalysis.branch || project.defaultBranch || 'main',
+      userScope: profile.id,
+      repositoryId: project.repository?.id,
+      projectId: project.id,
+      analyzedCommitSha: latestAnalysis.commitSha,
+      bypassCache: params.forceFresh,
+    });
+    liveHeadSha = headResult.currentHeadSha;
+    freshnessVerified = headResult.verified;
+  }
+
+  let freshness: 'CURRENT' | 'STALE' | 'ANALYZING' | 'PARTIAL' | 'FAILED' | 'UNVERIFIED' | 'SYNC_FAILED' = 'CURRENT';
+  let freshnessMessage = 'Repository analysis matches the latest verified GitHub commit.';
+  let upToDate = true;
+
+  if (
+    freshnessVerified &&
+    liveHeadSha &&
+    latestAnalysis.commitSha &&
+    liveHeadSha !== latestAnalysis.commitSha
+  ) {
+    freshness = 'STALE';
+    freshnessMessage = 'Repository has changed since this analysis (newer commit available on GitHub).';
+    upToDate = false;
+  } else if (!freshnessVerified && project.githubOwner && project.githubRepositoryName) {
+    freshness = 'UNVERIFIED';
+    freshnessMessage = headResult?.statusMessage || 'Repository freshness could not be verified.';
+    upToDate = false;
+  } else if (latestAnalysis.status === 'PARTIALLY_COMPLETED') {
+    freshness = 'PARTIAL';
+    freshnessMessage = 'Partially analyzed source files.';
+    upToDate = true;
+  } else {
+    freshness = 'CURRENT';
+    freshnessMessage = 'Repository analysis matches the latest verified GitHub commit.';
+    upToDate = true;
+  }
+
+  // Update in-memory workstation context cache if present so subsequent reads have updated freshness
+  for (const [key, cached] of Array.from(contextCache.entries())) {
+    if (key.includes(`:${params.projectId}:`)) {
+      if (cached.context.latestAnalysis) {
+        cached.context.latestAnalysis.freshness = freshness;
+        cached.context.latestAnalysis.freshnessVerified = freshnessVerified;
+        cached.context.latestAnalysis.freshnessMessage = freshnessMessage;
+        cached.context.latestAnalysis.liveHeadSha = liveHeadSha;
+        cached.context.latestAnalysis.providerStatus = headResult?.providerStatus;
+        cached.context.latestAnalysis.tokenValid = headResult?.tokenValid;
+        cached.context.latestAnalysis.isPublicFallback = headResult?.isPublicFallback;
+        cached.context.latestAnalysis.verifiedAt = new Date().toISOString();
+      }
+    }
+  }
+
+  return {
+    freshness,
+    freshnessVerified,
+    freshnessMessage,
+    liveHeadSha,
+    analyzedSha: latestAnalysis.commitSha,
+    upToDate,
+    providerStatus: headResult?.providerStatus,
+  };
 }

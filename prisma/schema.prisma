@@ -62,6 +62,7 @@ model GitHubConnection {
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
+  @@index([githubUsername])
   @@map("github_connections")
   @@schema("marrownode")
 }
@@ -134,6 +135,7 @@ model Repository {
   commits           ProjectCommit[]
   astCaches         AstFileCache[]
 
+  @@index([githubRepoId])
   @@map("repositories")
   @@schema("marrownode")
 }
@@ -182,6 +184,7 @@ model Analysis {
 
   @@index([projectId])
   @@index([projectId, createdAt])
+  @@index([projectId, status, createdAt])
   @@map("analyses")
   @@schema("marrownode")
 }

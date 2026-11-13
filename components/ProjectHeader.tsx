@@ -33,7 +33,7 @@ interface ProjectHeaderProps {
     analysisStatus?: string;
     lastAnalyzedAt?: string | Date | null;
   } | null;
-  freshness?: 'CURRENT' | 'STALE' | 'ANALYZING' | 'PARTIAL' | 'FAILED' | 'UNVERIFIED' | 'SYNC_FAILED';
+  freshness?: 'CURRENT' | 'STALE' | 'ANALYZING' | 'PARTIAL' | 'FAILED' | 'UNVERIFIED' | 'SYNC_FAILED' | 'CHECKING';
   onRefresh?: () => void;
   isRefreshing?: boolean;
   onAnalyze?: () => void;
@@ -168,6 +168,18 @@ export function ProjectHeader({
                   title="Synchronization failed; showing last successfully analyzed version"
                 >
                   Sync failed (showing last good analysis)
+                </Badge>
+              )}
+
+              {freshness === 'CHECKING' && (
+                <Badge
+                  variant="neutral"
+                  size="sm"
+                  className="font-sans font-medium text-[10px] gap-1"
+                  title="Checking latest commit on GitHub…"
+                >
+                  <Loader2 className="w-2.5 h-2.5 animate-spin text-text-muted" />
+                  <span>Checking freshness…</span>
                 </Badge>
               )}
 

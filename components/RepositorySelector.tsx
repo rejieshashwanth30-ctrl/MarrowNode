@@ -49,6 +49,15 @@ interface RepositorySelectorProps {
 
 type FilterType = 'all' | 'owned' | 'private' | 'forks';
 
+interface ClientRepoCache {
+  repositories: RepositoryItem[];
+  hasMore: boolean;
+  githubUsername?: string;
+  timestamp: number;
+}
+const repoCache = new Map<string, ClientRepoCache>();
+const CLIENT_REPO_TTL_MS = 60 * 1000;
+
 export function RepositorySelector({
   onRepositoryConnected,
   onCancel,
@@ -101,7 +110,21 @@ export function RepositorySelector({
 
   // Fetch repositories from API
   const fetchRepos = useCallback(
-    async (targetPage = 1, append = false) => {
+    async (targetPage = 1, append = false, bypassCache = false) => {
+      const cacheKey = `${filter}:${search.trim()}:${targetPage}`;
+
+      if (!append && !bypassCache) {
+        const cached = repoCache.get(cacheKey);
+        if (cached && Date.now() - cached.timestamp < CLIENT_REPO_TTL_MS) {
+          setRepositories(cached.repositories);
+          setHasMore(cached.hasMore);
+          if (cached.githubUsername) setGithubUsername(cached.githubUsername);
+          setPage(targetPage);
+          setLoading(false);
+          return;
+        }
+      }
+
       if (append) {
         setLoadingMore(true);
       } else {
@@ -145,6 +168,12 @@ export function RepositorySelector({
           setRepositories((prev) => [...prev, ...(data.repositories || [])]);
         } else {
           setRepositories(data.repositories || []);
+          repoCache.set(cacheKey, {
+            repositories: data.repositories || [],
+            hasMore: Boolean(data.hasMore),
+            githubUsername: data.githubUsername,
+            timestamp: Date.now(),
+          });
         }
 
         setPage(targetPage);
@@ -435,7 +464,7 @@ export function RepositorySelector({
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => fetchRepos(1, false)}
+                      onClick={() => fetchRepos(1, false, true)}
                       className="text-xs font-sans"
                     >
                       <RefreshCw className="w-3.5 h-3.5 mr-1.5" />

@@ -125,11 +125,11 @@ export function ProjectIntelligencePanel({
         </div>
       </CardHeader>
 
-      <CardContent className="p-3.5 sm:p-5 space-y-4">
+      <CardContent className="p-3 sm:p-5 space-y-3 sm:space-y-4">
         <form onSubmit={handleSubmit}>
-          <div className="flex flex-col min-[380px]:flex-row gap-2">
+          <div className="flex flex-col min-[480px]:flex-row gap-2 sm:gap-2.5">
             <div className="relative flex-1 min-w-0 flex items-center">
-              <Search className="w-4 h-4 text-text-muted absolute left-3 pointer-events-none" />
+              <Search className="w-4 h-4 text-text-muted absolute left-3.5 pointer-events-none" />
               <input
                 type="text"
                 value={query}
@@ -137,7 +137,7 @@ export function ProjectIntelligencePanel({
                 disabled={loading}
                 aria-label="Ask anything about this project"
                 placeholder="Ask about your project… (e.g. How does login work?)"
-                className="w-full h-10 sm:h-9 pl-9 pr-3 bg-surface border border-border rounded text-sm sm:text-xs font-sans text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-forest focus:border-forest transition-colors dark:bg-[#1A221D] dark:border-[#324237] dark:text-[#F2F4F0] dark:placeholder:text-[#98A49A]"
+                className="w-full h-11 sm:h-10 pl-9 pr-3.5 bg-surface border border-border rounded-lg text-xs font-sans text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-forest focus:border-forest transition-colors dark:bg-[#1A221D] dark:border-[#324237] dark:text-[#F2F4F0] dark:placeholder:text-[#98A49A]"
               />
             </div>
             <Button
@@ -145,7 +145,7 @@ export function ProjectIntelligencePanel({
               variant="primary"
               size="sm"
               disabled={!query.trim() || loading}
-              className="h-10 sm:h-9 w-full min-[380px]:w-auto text-xs font-sans font-medium px-4 gap-1.5 shrink-0"
+              className="h-11 sm:h-10 w-full min-[480px]:w-auto rounded-lg text-xs font-sans font-medium px-5 gap-1.5 shrink-0 bg-forest hover:bg-forest/90 text-white dark:bg-forest dark:hover:bg-forest/90 border border-forest/20 shadow-2xs"
             >
               {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <span>Ask</span>}
             </Button>

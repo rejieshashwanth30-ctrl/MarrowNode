@@ -9,14 +9,27 @@ import { getSafeErrorResponse } from '@/lib/errors';
 // In-memory cache for instantiated graph engines strictly scoped by userId:projectId:analysisId
 const engineCache = new Map<string, DependencyGraphEngine>();
 
+interface CachedImpactResult {
+  data: any;
+  expiresAt: number;
+}
+const impactResultCache = new Map<string, CachedImpactResult>();
+const IMPACT_CACHE_TTL_MS = 5 * 60 * 1000;
+
 registerCacheInvalidationListener((projectId) => {
   if (!projectId) {
     engineCache.clear();
+    impactResultCache.clear();
     return;
   }
   for (const key of Array.from(engineCache.keys())) {
     if (key.includes(`:${projectId}:`)) {
       engineCache.delete(key);
+    }
+  }
+  for (const key of Array.from(impactResultCache.keys())) {
+    if (key.includes(`:${projectId}:`)) {
+      impactResultCache.delete(key);
     }
   }
 });
@@ -71,6 +84,13 @@ export async function GET(
         (a) => a.status === 'COMPLETED' || a.status === 'PARTIALLY_COMPLETED'
       ) || null;
     const latestAnalysis = completedAnalysis || project.analyses[0] || null;
+
+    const impactCacheKey = `${profile.id}:${projectId}:${latestAnalysis?.id || 'none'}:${target}:${changeType}`;
+    const cachedImpact = impactResultCache.get(impactCacheKey);
+    if (cachedImpact && Date.now() < cachedImpact.expiresAt) {
+      return NextResponse.json(cachedImpact.data);
+    }
+
     const engineKey = `${profile.id}:${projectId}:${latestAnalysis?.id || 'none'}`;
     let graphEngine = engineCache.get(engineKey);
 
@@ -126,7 +146,7 @@ export async function GET(
         : []),
     ];
 
-    return NextResponse.json({
+    const payload = {
       success: true,
       projectId,
       ...result,
@@ -145,7 +165,14 @@ export async function GET(
         unresolvedImportsCount,
         isPartial,
       },
+    };
+
+    impactResultCache.set(impactCacheKey, {
+      data: payload,
+      expiresAt: Date.now() + IMPACT_CACHE_TTL_MS,
     });
+
+    return NextResponse.json(payload);
   } catch (error: any) {
     const safe = getSafeErrorResponse(error, 'Failed to compute change impact analysis.', 'impact.GET');
     return NextResponse.json({ error: safe.message }, { status: safe.statusCode });

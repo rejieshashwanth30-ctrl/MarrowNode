@@ -813,7 +813,7 @@ export async function askProjectQuestion(params: {
   }
 
   const intent = classifyQueryIntent(trimmedQuery);
-  const context = await getProjectWorkstationContext(projectId);
+  const context = await getProjectWorkstationContext(projectId, { checkFreshnessLive: false, profile });
 
   const analysisId = context.latestAnalysis?.id || 'initial';
   const commitSha = context.latestAnalysis?.commitSha || 'none';

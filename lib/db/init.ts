@@ -1,5 +1,9 @@
 import { prisma } from '@/lib/prisma';
 
+const globalForInit = globalThis as unknown as {
+  __marrownode_schema_initialized?: boolean;
+};
+
 let isInitialized = false;
 let initPromise: Promise<boolean> | null = null;
 
@@ -7,9 +11,10 @@ let initPromise: Promise<boolean> | null = null;
  * Ensures the 'marrownode' PostgreSQL schema and all required tables exist.
  * Idempotent, safe, and runs on cold start so that ANY Neon database connected
  * to MarrowNode (in production or local) automatically has the required schema.
+ * Reuses in-memory flag to never bottleneck warm page-load requests.
  */
 export async function ensureMarrowNodeSchema(): Promise<boolean> {
-  if (isInitialized) {
+  if (globalForInit.__marrownode_schema_initialized || isInitialized) {
     return true;
   }
 
@@ -35,6 +40,7 @@ export async function ensureMarrowNodeSchema(): Promise<boolean> {
       `);
 
       if (schemaCheck.length > 0) {
+        globalForInit.__marrownode_schema_initialized = true;
         isInitialized = true;
         return true;
       }
@@ -345,9 +351,18 @@ export async function ensureMarrowNodeSchema(): Promise<boolean> {
           ON "marrownode"."project_commits"("projectId", "committedAt");
         CREATE INDEX IF NOT EXISTS "project_commits_projectId_branch_committedAt_idx"
           ON "marrownode"."project_commits"("projectId", "branch", "committedAt");
+
+        -- Performance Indexes
+        CREATE INDEX IF NOT EXISTS "analyses_projectId_status_createdAt_idx"
+          ON "marrownode"."analyses"("projectId", "status", "createdAt");
+        CREATE INDEX IF NOT EXISTS "repositories_githubRepoId_idx"
+          ON "marrownode"."repositories"("githubRepoId");
+        CREATE INDEX IF NOT EXISTS "github_connections_githubUsername_idx"
+          ON "marrownode"."github_connections"("githubUsername");
       `);
 
       console.log('[MarrowNode DB Init] marrownode schema and tables successfully provisioned.');
+      globalForInit.__marrownode_schema_initialized = true;
       isInitialized = true;
       return true;
     } catch (err: any) {

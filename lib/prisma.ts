@@ -63,8 +63,7 @@ export const prisma =
         : ['error'],
   });
 
-if (process.env.NODE_ENV !== 'production') {
-  globalForPrisma.prisma = prisma;
-}
+// Ensure Prisma Client singleton is reused across all invocations (dev and production serverless)
+globalForPrisma.prisma = prisma;
 
 export default prisma;

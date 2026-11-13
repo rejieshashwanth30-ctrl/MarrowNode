@@ -23,7 +23,7 @@ export interface OnboardingSnapshotBanner {
   commitShort: string | null;
   branch: string;
   analyzedAt: string | null;
-  freshness: 'CURRENT' | 'STALE' | 'ANALYZING' | 'PARTIAL' | 'FAILED' | 'UNVERIFIED' | 'SYNC_FAILED';
+  freshness: 'CURRENT' | 'STALE' | 'ANALYZING' | 'PARTIAL' | 'FAILED' | 'UNVERIFIED' | 'SYNC_FAILED' | 'CHECKING';
   overallCoveragePercent: number;
   sourceFilesTotal: number;
   sourceFilesParsed: number;
@@ -376,6 +376,8 @@ export async function getDeveloperOnboarding(
     async () => {
       const context = await getProjectWorkstationContext(projectId, {
         forceFresh: options?.forceFresh,
+        checkFreshnessLive: Boolean(options?.forceFresh),
+        profile,
       });
 
       const analysisId = context.latestAnalysis?.id || 'pending';
