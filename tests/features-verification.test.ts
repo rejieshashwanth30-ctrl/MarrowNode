@@ -48,6 +48,10 @@ import {
   type CompactParsedAstSummary,
 } from '../lib/github/analysis';
 import { prisma } from '../lib/prisma';
+import {
+  buildArchitectureGraphModel,
+  computeDagreLayout,
+} from '../lib/analysis/architecture-graph-model';
 
 function makeBaseContext(overrides?: Partial<ProjectWorkstationContext>): ProjectWorkstationContext {
   return {
@@ -1736,3 +1740,162 @@ test('GitHub OAuth, Token Lifecycle, Account Switching & Connection Validator', 
     await prisma.user.deleteMany({ where: { id: testProfileId } }).catch(() => {});
   }
 });
+
+test('Architecture Graph & Project Structure Visualizer (Ground Truth, Dagre Layout, Drill-Down, Cycles, Scalability)', async (t) => {
+  // Test 1: Small repository with entry point and modules
+  await t.test('Small repository generates accurate nodes and directional edges without fake connections', () => {
+    const nodes: any[] = [
+      { id: 'node-app', name: 'App', type: 'App', category: 'Entrypoint', filesCount: 2, metrics: { loc: 100, fanIn: 0, fanOut: 2 }, health: 'active', dependencies: ['src', 'lib'], dependents: [], relatedFiles: ['package.json'], position: { x: 0, y: 0 } },
+      { id: 'node-src', name: 'Src', type: 'Module', category: 'Module', filesCount: 5, metrics: { loc: 300, fanIn: 1, fanOut: 1 }, health: 'stable', dependencies: ['lib'], dependents: ['App'], relatedFiles: ['src/index.ts'], position: { x: 0, y: 0 } },
+      { id: 'node-lib', name: 'Lib', type: 'Database', category: 'Module', filesCount: 3, metrics: { loc: 150, fanIn: 2, fanOut: 0 }, health: 'stable', dependencies: [], dependents: ['App', 'Src'], relatedFiles: ['lib/db.ts'], position: { x: 0, y: 0 } },
+    ];
+    const edges: any[] = [
+      { id: 'edge-app-src', source: 'node-app', target: 'node-src', relationship: 'imports', confidence: 1.0 },
+      { id: 'edge-src-lib', source: 'node-src', target: 'node-lib', relationship: 'imports', confidence: 1.0 },
+    ];
+
+    const model = buildArchitectureGraphModel({ nodes, edges });
+    assert.equal(model.nodes.length, 3);
+    assert.equal(model.edges.length, 2);
+    assert.equal(model.isDrillDown, false);
+
+    const appNode = model.nodes.find(n => n.id === 'node-app')!;
+    assert.equal(appNode.isEntryPoint, true);
+    assert.equal(appNode.fanOut, 1);
+
+    const libNode = model.nodes.find(n => n.id === 'node-lib')!;
+    assert.equal(libNode.fanIn, 1);
+    assert.equal(libNode.isIsolated, false);
+  });
+
+  // Test 2: Isolated modules are truthfully marked and filterable
+  await t.test('Isolated modules without connections have isIsolated=true and no invented edges', () => {
+    const nodes: any[] = [
+      { id: 'node-app', name: 'App', type: 'App', category: 'Entrypoint', filesCount: 2, metrics: { loc: 100, fanIn: 0, fanOut: 1 }, health: 'active', dependencies: ['src'], dependents: [], relatedFiles: [], position: { x: 0, y: 0 } },
+      { id: 'node-src', name: 'Src', type: 'Module', category: 'Module', filesCount: 5, metrics: { loc: 300, fanIn: 1, fanOut: 0 }, health: 'stable', dependencies: [], dependents: ['App'], relatedFiles: [], position: { x: 0, y: 0 } },
+      { id: 'node-public', name: 'Public', type: 'Services', category: 'Module', filesCount: 6, metrics: { loc: 50, fanIn: 0, fanOut: 0 }, health: 'stable', dependencies: [], dependents: [], relatedFiles: [], position: { x: 0, y: 0 } },
+    ];
+    const edges: any[] = [
+      { id: 'edge-app-src', source: 'node-app', target: 'node-src', relationship: 'imports', confidence: 1.0 },
+    ];
+
+    const model = buildArchitectureGraphModel({ nodes, edges });
+    const publicNode = model.nodes.find(n => n.id === 'node-public')!;
+    assert.equal(publicNode.isIsolated, true);
+    assert.equal(publicNode.fanIn, 0);
+    assert.equal(publicNode.fanOut, 0);
+
+    // Hide isolated filter
+    const hiddenModel = buildArchitectureGraphModel({ nodes, edges, hideIsolated: true });
+    assert.equal(hiddenModel.nodes.some(n => n.id === 'node-public'), false);
+    assert.equal(hiddenModel.nodes.length, 2);
+  });
+
+  // Test 3: Circular dependencies are accurately identified and tagged
+  await t.test('Circular dependencies in AST are highlighted with isCycle=true on nodes and edges', () => {
+    const nodes: any[] = [
+      { id: 'node-auth', name: 'Auth', type: 'Services', category: 'Module', filesCount: 3, metrics: { loc: 200, fanIn: 1, fanOut: 1 }, health: 'stable', dependencies: ['users'], dependents: ['users'], relatedFiles: [], position: { x: 0, y: 0 } },
+      { id: 'node-users', name: 'Users', type: 'Services', category: 'Module', filesCount: 4, metrics: { loc: 250, fanIn: 1, fanOut: 1 }, health: 'stable', dependencies: ['auth'], dependents: ['auth'], relatedFiles: [], position: { x: 0, y: 0 } },
+    ];
+    const edges: any[] = [
+      { id: 'edge-auth-users', source: 'node-auth', target: 'node-users', relationship: 'imports', confidence: 1.0 },
+      { id: 'edge-users-auth', source: 'node-users', target: 'node-auth', relationship: 'imports', confidence: 1.0 },
+    ];
+    const cycles = [['auth/index.ts', 'users/service.ts', 'auth/index.ts']];
+
+    const model = buildArchitectureGraphModel({ nodes, edges, cycles });
+    const authNode = model.nodes.find(n => n.id === 'node-auth')!;
+    const usersNode = model.nodes.find(n => n.id === 'node-users')!;
+    assert.equal(authNode.isCycle, true);
+    assert.equal(usersNode.isCycle, true);
+    assert.equal(model.cyclesDetectedCount, 1);
+  });
+
+  // Test 4: Subsystem Drill-Down generates verified sub-modules and sub-edges
+  await t.test('Subsystem Drill-Down derives verified internal modules and file-level connections from dependencyEdges', () => {
+    const dependencyEdges = [
+      { id: 'e1', source: 'src/app/page.tsx', target: 'src/lib/db.ts', line: 2, relationship: 'imports', symbols: ['prisma'] },
+      { id: 'e2', source: 'src/app/api/auth.ts', target: 'src/lib/auth.ts', line: 3, relationship: 'imports', symbols: ['verifyToken'] },
+      { id: 'e3', source: 'src/components/Header.tsx', target: 'src/lib/utils.ts', line: 1, relationship: 'imports', symbols: ['cn'] },
+      { id: 'e4', source: 'src/lib/auth.ts', target: 'src/lib/db.ts', line: 4, relationship: 'imports', symbols: ['userModel'] },
+    ];
+    const fileTree: any[] = [
+      { id: '1', name: 'src', path: 'src', type: 'folder', children: [
+        { id: '2', name: 'app', path: 'src/app', type: 'folder', children: [
+          { id: '3', name: 'page.tsx', path: 'src/app/page.tsx', type: 'file' },
+          { id: '4', name: 'auth.ts', path: 'src/app/api/auth.ts', type: 'file' },
+        ]},
+        { id: '5', name: 'lib', path: 'src/lib', type: 'folder', children: [
+          { id: '6', name: 'db.ts', path: 'src/lib/db.ts', type: 'file' },
+          { id: '7', name: 'auth.ts', path: 'src/lib/auth.ts', type: 'file' },
+          { id: '8', name: 'utils.ts', path: 'src/lib/utils.ts', type: 'file' },
+        ]},
+        { id: '9', name: 'components', path: 'src/components', type: 'folder', children: [
+          { id: '10', name: 'Header.tsx', path: 'src/components/Header.tsx', type: 'file' },
+        ]},
+      ]},
+    ];
+
+    const model = buildArchitectureGraphModel({
+      nodes: [],
+      edges: [],
+      dependencyEdges,
+      fileTree,
+      activeLevel: 'src',
+    });
+
+    assert.equal(model.isDrillDown, true);
+    assert.equal(model.levelTitle, 'Subsystems in /src');
+    assert.equal(model.levelBreadcrumb.length, 2);
+    assert.equal(model.parentPath, 'root');
+
+    // Submodules: src/app, src/lib, src/components
+    const subApp = model.nodes.find(n => n.path === 'src/app')!;
+    const subLib = model.nodes.find(n => n.path === 'src/lib')!;
+    const subComponents = model.nodes.find(n => n.path === 'src/components')!;
+    assert.ok(subApp);
+    assert.ok(subLib);
+    assert.ok(subComponents);
+
+    // Edges: src/app -> src/lib, src/components -> src/lib
+    const appToLib = model.edges.find(e => e.source === subApp.id && e.target === subLib.id)!;
+    assert.ok(appToLib);
+    assert.equal(appToLib.connectionCount, 2); // 2 imports from app to lib
+    assert.ok(appToLib.evidence?.includes('src/app'));
+
+    const compToLib = model.edges.find(e => e.source === subComponents.id && e.target === subLib.id)!;
+    assert.ok(compToLib);
+    assert.ok(compToLib.symbols?.includes('cn'));
+  });
+
+  // Test 5: Dagre Layout outputs deterministic, collision-free coordinates
+  await t.test('computeDagreLayout generates deterministic non-overlapping hierarchical coordinates', () => {
+    const nodes: any[] = [
+      { id: 'node-app', name: 'App', label: 'App', path: '/', type: 'App', category: 'Entrypoint', filesCount: 2, loc: 100, fanIn: 0, fanOut: 1, isEntryPoint: true, isCycle: false, isIsolated: false, dependencies: [], dependents: [], relatedFiles: [], hasDrillDown: false, health: 'active' },
+      { id: 'node-src', name: 'Src', label: 'Src', path: 'src', type: 'Module', category: 'Module', filesCount: 10, loc: 500, fanIn: 1, fanOut: 1, isEntryPoint: false, isCycle: false, isIsolated: false, dependencies: [], dependents: [], relatedFiles: [], hasDrillDown: true, health: 'stable' },
+      { id: 'node-db', name: 'Db', label: 'Db', path: 'db', type: 'Database', category: 'Module', filesCount: 3, loc: 150, fanIn: 1, fanOut: 0, isEntryPoint: false, isCycle: false, isIsolated: false, dependencies: [], dependents: [], relatedFiles: [], hasDrillDown: false, health: 'stable' },
+    ];
+    const edges: any[] = [
+      { id: 'e1', source: 'node-app', target: 'node-src', relationship: 'imports', confidence: 1.0 },
+      { id: 'e2', source: 'node-src', target: 'node-db', relationship: 'imports', confidence: 1.0 },
+    ];
+
+    const { layoutNodes: tbNodes } = computeDagreLayout(nodes, edges, { direction: 'TB' });
+    const appTb = tbNodes.find(n => n.id === 'node-app')!;
+    const srcTb = tbNodes.find(n => n.id === 'node-src')!;
+    const dbTb = tbNodes.find(n => n.id === 'node-db')!;
+
+    // Top-to-Bottom: App Y < Src Y < Db Y
+    assert.ok(appTb.position.y < srcTb.position.y, 'App should be above Src in TB');
+    assert.ok(srcTb.position.y < dbTb.position.y, 'Src should be above Db in TB');
+
+    // Left-to-Right: App X < Src X < Db X
+    const { layoutNodes: lrNodes } = computeDagreLayout(nodes, edges, { direction: 'LR' });
+    const appLr = lrNodes.find(n => n.id === 'node-app')!;
+    const srcLr = lrNodes.find(n => n.id === 'node-src')!;
+    const dbLr = lrNodes.find(n => n.id === 'node-db')!;
+    assert.ok(appLr.position.x < srcLr.position.x, 'App should be to the left of Src in LR');
+    assert.ok(srcLr.position.x < dbLr.position.x, 'Src should be to the left of Db in LR');
+  });
+});
+

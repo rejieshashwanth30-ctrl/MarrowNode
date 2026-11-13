@@ -116,6 +116,19 @@ export interface ProjectWorkstationContext {
   fileTree: FileTreeNode[];
   nodes: ArchitectureNode[];
   edges: ArchitectureEdge[];
+  dependencyEdges?: Array<{
+    id: string;
+    source: string;
+    target: string;
+    line?: number;
+    relationship?: string;
+    confidence?: number;
+    isIndirect?: boolean;
+    isTypeOnly?: boolean;
+    symbols?: string[];
+    provenance?: any;
+  }>;
+  cycles?: string[][];
   timeline: TimelineEvent[];
   evidenceItems: EvidenceItem[];
   dependencies: string[];
@@ -291,6 +304,8 @@ export async function getProjectWorkstationContext(
   let fileTree: FileTreeNode[] = [];
   let nodes: ArchitectureNode[] = [];
   let edges: ArchitectureEdge[] = [];
+  let dependencyEdges: any[] = [];
+  let detectedCycles: string[][] = [];
   let timeline: TimelineEvent[] = [];
   let dependencies: string[] = [];
   let modules: string[] = [];
@@ -344,6 +359,12 @@ export async function getProjectWorkstationContext(
       }
       if (Array.isArray(meta.modules)) {
         modules = meta.modules;
+      }
+      if (Array.isArray(meta.dependencyEdges) && meta.dependencyEdges.length > 0) {
+        dependencyEdges = meta.dependencyEdges;
+      }
+      if (Array.isArray(meta.cycles) && meta.cycles.length > 0) {
+        detectedCycles = meta.cycles;
       }
 
       evidenceItems.push({
@@ -772,6 +793,8 @@ export async function getProjectWorkstationContext(
     fileTree,
     nodes,
     edges,
+    dependencyEdges,
+    cycles: detectedCycles,
     timeline,
     evidenceItems,
     dependencies,

@@ -922,9 +922,20 @@ export default function DashboardPage() {
                   key={selectedProject?.id || 'no-proj-arch'}
                   nodes={projectContext?.nodes || []}
                   edges={projectContext?.edges || []}
+                  dependencyEdges={projectContext?.dependencyEdges || []}
+                  cycles={projectContext?.cycles || []}
+                  fileTree={projectContext?.fileTree || []}
                   hasProject={Boolean(selectedProject)}
                   isAnalyzing={isAnalyzing || selectedProject?.analysisStatus === 'RUNNING'}
                   onConnectRepo={() => setShowRepoModal(true)}
+                  onSelectFile={(filePath) => {
+                    setFocusedFilePath(filePath);
+                    setActiveView('explorer');
+                  }}
+                  onExploreFolder={(folderPath: string) => {
+                    setFocusedFilePath(folderPath);
+                    setActiveView('explorer');
+                  }}
                 />
               </div>
             )}
