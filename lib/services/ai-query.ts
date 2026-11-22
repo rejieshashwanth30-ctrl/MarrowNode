@@ -825,15 +825,20 @@ export async function askProjectQuestion(params: {
   }
 
   // Load real file-level dependency edges for the active project (already verified via getProjectWorkstationContext)
-  const archEv = await prisma.evidence.findFirst({
-    where: { projectId, type: 'architecture' },
-    orderBy: { createdAt: 'desc' },
-    select: { metadata: true },
-  });
-  const archMeta = (archEv?.metadata as any) || {};
-  const dependencyEdges: DependencyEdge[] = Array.isArray(archMeta.dependencyEdges)
-    ? archMeta.dependencyEdges
-    : [];
+  let dependencyEdges: DependencyEdge[] = [];
+  if (Array.isArray(context.dependencyEdges) && context.dependencyEdges.length > 0) {
+    dependencyEdges = context.dependencyEdges as any as DependencyEdge[];
+  } else {
+    const archEv = await prisma.evidence.findFirst({
+      where: { projectId, type: 'architecture' },
+      orderBy: { createdAt: 'desc' },
+      select: { metadata: true },
+    });
+    const archMeta = (archEv?.metadata as any) || {};
+    dependencyEdges = Array.isArray(archMeta.dependencyEdges)
+      ? archMeta.dependencyEdges
+      : [];
+  }
 
   // If HISTORY intent, query across ALL indexed ProjectCommit rows in Neon (no 30-commit limit)
   let historicalCommits: Array<{

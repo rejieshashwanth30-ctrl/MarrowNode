@@ -64,6 +64,16 @@ export function AskProjectInterface({
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const textareaRef = React.useRef<HTMLTextAreaElement>(null);
+
+  // Auto-resize textarea to fit content comfortably without horizontal overflow
+  React.useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      const scrollHeight = textareaRef.current.scrollHeight;
+      textareaRef.current.style.height = `${Math.min(120, Math.max(48, scrollHeight))}px`;
+    }
+  }, [query]);
 
   // Reset conversation state cleanly when switching projects or logging out
   React.useEffect(() => {
@@ -86,12 +96,36 @@ export function AskProjectInterface({
     setMessages((prev) => [...prev, userMsg]);
     setLoading(true);
 
+    const executeFetch = async (retryCount = 0): Promise<Response> => {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 45000); // 45s bounded timeout
+      try {
+        const res = await fetch(`/api/projects/${projectId}/ask`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: q }),
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+        return res;
+      } catch (fetchErr: any) {
+        clearTimeout(timeoutId);
+        // Fast single retry on transient mobile network drops (e.g. mobile Safari connection dropped on tab wakeup)
+        if (
+          retryCount === 0 &&
+          (fetchErr.name === 'TypeError' ||
+            fetchErr.message?.toLowerCase().includes('failed to fetch') ||
+            fetchErr.message?.toLowerCase().includes('network'))
+        ) {
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          return executeFetch(1);
+        }
+        throw fetchErr;
+      }
+    };
+
     try {
-      const res = await fetch(`/api/projects/${projectId}/ask`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: q }),
-      });
+      const res = await executeFetch();
 
       let data: any = null;
       try {
@@ -147,8 +181,11 @@ export function AskProjectInterface({
       }
     } catch (err: any) {
       const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
+      const isTimeout = err?.name === 'AbortError' || err?.message?.includes('aborted');
       const errorMsg = isOffline
         ? 'No internet connection detected. Please check your network and tap Retry.'
+        : isTimeout
+        ? 'Request timed out after 45 seconds while analyzing repository evidence. Please tap Retry.'
         : 'Unable to reach MarrowNode right now. Please check your connection or tap Retry.';
 
       setMessages((prev) => [
@@ -165,6 +202,13 @@ export function AskProjectInterface({
       ]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleAsk();
     }
   };
 
@@ -408,31 +452,33 @@ export function AskProjectInterface({
           )}
         </div>
 
-        {/* Input Bar — Mobile-optimized 48px touch target, 16px font to prevent iOS zoom */}
+        {/* Input Bar — Mobile-optimized 48px+ touch target, multiline auto-expanding textarea, 16px font to prevent iOS zoom */}
         <div className="border-t border-border pt-3 pb-1 sm:pt-4 sm:pb-0 dark:border-[#2C3930]">
           <form
             onSubmit={(e) => {
               e.preventDefault();
               handleAsk();
             }}
-            className="flex flex-row items-center gap-2 sm:gap-2.5"
+            className="flex flex-row items-end gap-2 sm:gap-2.5"
           >
             <div className="relative flex-1 min-w-0">
-              <input
-                type="text"
+              <textarea
+                ref={textareaRef}
+                rows={1}
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={handleKeyDown}
                 placeholder="Ask about files, packages, or history…"
                 aria-label="Ask a question about your project"
                 disabled={loading}
-                className="w-full h-12 px-4 rounded-xl text-base sm:text-sm font-sans bg-surface border border-border text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-forest focus:border-forest dark:bg-[#1A221D] dark:border-[#324237] dark:text-[#F2F4F0] dark:placeholder:text-[#98A49A] transition-all shadow-2xs"
+                className="w-full min-h-[48px] max-h-[120px] py-3 px-3.5 sm:px-4 rounded-xl text-base sm:text-sm font-sans bg-surface border border-border text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-forest focus:border-forest dark:bg-[#1A221D] dark:border-[#324237] dark:text-[#F2F4F0] dark:placeholder:text-[#98A49A] transition-all resize-none shadow-2xs leading-relaxed"
               />
             </div>
             <Button
               type="submit"
               variant="primary"
               disabled={!query.trim() || loading}
-              className="h-12 px-4 sm:px-6 rounded-xl text-sm font-sans font-medium gap-2 shrink-0 bg-forest hover:bg-forest/90 text-white dark:bg-forest dark:hover:bg-forest/90 border border-forest/20 shadow-sm active:scale-[0.98] transition-all flex items-center justify-center min-w-[72px] sm:min-w-[88px]"
+              className="h-[48px] px-4 sm:px-6 rounded-xl text-sm font-sans font-medium gap-2 shrink-0 bg-forest hover:bg-forest/90 text-white dark:bg-forest dark:hover:bg-forest/90 border border-forest/20 shadow-sm active:scale-[0.98] transition-all flex items-center justify-center min-w-[72px] sm:min-w-[88px]"
             >
               {loading ? (
                 <Loader2 className="w-4 h-4 animate-spin shrink-0" />

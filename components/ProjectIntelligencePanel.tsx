@@ -38,12 +38,35 @@ export function ProjectIntelligencePanel({
     setLoading(true);
     setResult(null);
 
+    const executeFetch = async (retryCount = 0): Promise<Response> => {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 45000); // 45s bounded timeout
+      try {
+        const res = await fetch(`/api/projects/${projectId}/ask`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: q }),
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+        return res;
+      } catch (fetchErr: any) {
+        clearTimeout(timeoutId);
+        if (
+          retryCount === 0 &&
+          (fetchErr.name === 'TypeError' ||
+            fetchErr.message?.toLowerCase().includes('failed to fetch') ||
+            fetchErr.message?.toLowerCase().includes('network'))
+        ) {
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          return executeFetch(1);
+        }
+        throw fetchErr;
+      }
+    };
+
     try {
-      const res = await fetch(`/api/projects/${projectId}/ask`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: q }),
-      });
+      const res = await executeFetch();
 
       let data: any = null;
       try {
@@ -76,10 +99,13 @@ export function ProjectIntelligencePanel({
           failedQuery: q,
         });
       }
-    } catch (_) {
+    } catch (err: any) {
       const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
+      const isTimeout = err?.name === 'AbortError' || err?.message?.includes('aborted');
       const errorMsg = isOffline
         ? 'No internet connection detected. Please check your network and try again.'
+        : isTimeout
+        ? 'Request timed out after 45 seconds while analyzing repository evidence. Please tap Retry.'
         : 'Unable to reach MarrowNode right now. Please check your connection and try again.';
 
       setResult({
