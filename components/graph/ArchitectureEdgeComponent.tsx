@@ -14,6 +14,7 @@ export interface ArchitectureEdgeData extends NormalizedGraphEdge {
   isInboundToSelected?: boolean;
   isDimmed?: boolean;
   showLabelAlways?: boolean;
+  isExternal?: boolean;
   [key: string]: any;
 }
 
@@ -35,6 +36,7 @@ export const ArchitectureEdgeComponent = memo(function ArchitectureEdgeComponent
   const isInbound = edgeData?.isInboundToSelected;
   const isDimmed = edgeData?.isDimmed;
   const isCycle = edgeData?.isCycle;
+  const isExternal = edgeData?.isExternal;
   const showLabel = edgeData?.showLabelAlways || selected || isOutbound || isInbound;
 
   const [edgePath, labelX, labelY] = getBezierPath({
@@ -47,28 +49,43 @@ export const ArchitectureEdgeComponent = memo(function ArchitectureEdgeComponent
   });
 
   // Determine stroke color & width
-  let strokeColor = '#B8B9B1'; // default light mode
+  let strokeColor = '#6B7E72'; // neutral dark theme edge
   let strokeWidth = 1.5;
 
   if (selected || isOutbound) {
-    strokeColor = '#56735F'; // forest green
+    strokeColor = '#34D399'; // bright forest green
     strokeWidth = 2.5;
   } else if (isInbound) {
-    strokeColor = '#B56B45'; // copper
+    strokeColor = '#FB923C'; // bright copper amber
     strokeWidth = 2.5;
   } else if (isCycle) {
-    strokeColor = '#D97706'; // amber warning
-    strokeWidth = 2;
+    strokeColor = '#F59E0B'; // amber warning
+    strokeWidth = 2.0;
+  } else if (isExternal) {
+    strokeColor = '#88A892';
+    strokeWidth = 1.25;
   }
 
   const customStyle: React.CSSProperties = {
     ...style,
     stroke: strokeColor,
     strokeWidth,
-    opacity: isDimmed ? 0.15 : 1,
+    opacity: isDimmed ? 0.12 : 0.85,
     transition: 'all 200ms ease',
-    strokeDasharray: isCycle ? '5 4' : undefined,
+    strokeDasharray: isCycle ? '5 4' : isExternal ? '4 3' : undefined,
   };
+
+  const relationshipLabel = edgeData?.relationship || 'imports';
+  const connectionCountText =
+    edgeData?.connectionCount && edgeData.connectionCount > 1
+      ? ` (${edgeData.connectionCount})`
+      : '';
+
+  const tooltipText =
+    edgeData?.evidence ||
+    (edgeData?.symbols && edgeData.symbols.length > 0
+      ? `Imports: ${edgeData.symbols.join(', ')}`
+      : `${edgeData?.source} imports ${edgeData?.target}`);
 
   return (
     <>
@@ -84,19 +101,19 @@ export const ArchitectureEdgeComponent = memo(function ArchitectureEdgeComponent
             className="nodrag nopan"
           >
             <div
-              className={`px-1.5 py-0.5 rounded text-[10px] font-mono leading-none border shadow-2xs select-none backdrop-blur-xs transition-opacity ${
+              className={`px-1.5 py-0.5 rounded text-[9px] font-mono leading-none border shadow-2xs select-none backdrop-blur-xs transition-opacity cursor-help ${
                 isOutbound
-                  ? 'bg-forest/90 text-white border-forest'
+                  ? 'bg-forest text-white border-forest dark:bg-[#1E3A2B] dark:border-[#34D399] dark:text-[#34D399]'
                   : isInbound
-                  ? 'bg-copper/90 text-white border-copper'
+                  ? 'bg-copper text-white border-copper dark:bg-[#382015] dark:border-[#FB923C] dark:text-[#FB923C]'
+                  : isCycle
+                  ? 'bg-amber-600/90 text-white border-amber-600 dark:bg-[#3D2808] dark:border-[#F59E0B] dark:text-[#FCD34D]'
                   : 'bg-surface/90 text-text-muted border-border dark:bg-[#151C17]/90 dark:border-[#2C3930] dark:text-[#C6CDC7]'
               }`}
-              title={edgeData?.evidence || `${edgeData?.source} imports ${edgeData?.target}`}
+              title={tooltipText}
             >
-              {edgeData?.relationship || 'imports'}
-              {edgeData?.connectionCount && edgeData.connectionCount > 1
-                ? ` (${edgeData.connectionCount})`
-                : ''}
+              {relationshipLabel}
+              {connectionCountText}
             </div>
           </div>
         </EdgeLabelRenderer>

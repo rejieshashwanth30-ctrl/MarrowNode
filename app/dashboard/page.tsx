@@ -925,6 +925,9 @@ export default function DashboardPage() {
                   dependencyEdges={projectContext?.dependencyEdges || []}
                   cycles={projectContext?.cycles || []}
                   fileTree={projectContext?.fileTree || []}
+                  projectName={selectedProject?.name || projectContext?.project?.name}
+                  framework={selectedProject?.framework || projectContext?.project?.framework || undefined}
+                  externalDependencies={projectContext?.dependencies || []}
                   hasProject={Boolean(selectedProject)}
                   isAnalyzing={isAnalyzing || selectedProject?.analysisStatus === 'RUNNING'}
                   onConnectRepo={() => setShowRepoModal(true)}
@@ -935,6 +938,10 @@ export default function DashboardPage() {
                   onExploreFolder={(folderPath: string) => {
                     setFocusedFilePath(folderPath);
                     setActiveView('explorer');
+                  }}
+                  onNavigateToImpact={(targetPath: string) => {
+                    setFocusedFilePath(targetPath);
+                    setActiveView('impact');
                   }}
                 />
               </div>
